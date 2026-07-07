@@ -1,0 +1,19 @@
+{
+  "name": "@audio/synth-drum",
+  "version": "0.0.0",
+  "description": "Drum synthesis — membrane (kick), metal (cymbal), noise (snare/hat)",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "drum",
+    "percussion"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@audio/synth-voice",
+  "version": "0.0.0",
+  "description": "Synth voice — oscillator + envelope + filter (Tone.js Synth/FMSynth/AMSynth class)",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "voice",
+    "synthesizer"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}
