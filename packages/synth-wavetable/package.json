@@ -1,12 +1,20 @@
 {
   "name": "@audio/synth-wavetable",
-  "version": "0.0.0",
-  "description": "Morphing wavetable oscillator — WaveEdit-class banks, position scanning",
+  "version": "1.0.0",
+  "description": "Morphing wavetable oscillator — scan a bank of single-cycle tables (WaveEdit class)",
   "type": "module",
   "sideEffects": false,
-  "private": true,
+  "main": "wavetable.js",
+  "exports": {
+    ".": "./wavetable.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "wavetable.js"
+  ],
   "keywords": [
     "audio",
+    "dsp",
     "synth",
     "wavetable"
   ],
@@ -14,5 +22,8 @@
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,20 +1,29 @@
 {
   "name": "@audio/synth-rhythm",
-  "version": "0.0.0",
-  "description": "Rhythm track — metronome/click track generator at a given BPM",
+  "version": "1.0.0",
+  "description": "Rhythm / click track — BPM grid with accented downbeats",
   "type": "module",
   "sideEffects": false,
-  "private": true,
+  "main": "rhythm.js",
+  "exports": {
+    ".": "./rhythm.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "rhythm.js"
+  ],
   "keywords": [
     "audio",
     "dsp",
     "synth",
-    "metronome",
-    "click-track"
+    "rhythm"
   ],
   "license": "MIT",
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

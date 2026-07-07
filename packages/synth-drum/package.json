@@ -1,19 +1,29 @@
 {
   "name": "@audio/synth-drum",
-  "version": "0.0.0",
-  "description": "Drum synthesis — membrane (kick), metal (cymbal), noise (snare/hat)",
+  "version": "1.0.0",
+  "description": "Drum synthesis — membrane kick, metal cymbal, noise snare (Tone.js class)",
   "type": "module",
   "sideEffects": false,
-  "private": true,
+  "main": "drum.js",
+  "exports": {
+    ".": "./drum.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "drum.js"
+  ],
   "keywords": [
     "audio",
     "dsp",
-    "drum",
-    "percussion"
+    "synth",
+    "drum"
   ],
   "license": "MIT",
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

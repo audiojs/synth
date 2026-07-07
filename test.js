@@ -97,3 +97,61 @@ test('osc — pitch correct; square odd-dominant, saw has 2nd harmonic', () => {
 	ok(goert(saw, 880) > goert(sq, 880) * 3, 'saw has 2nd harmonic, square does not')
 	almost(zcFreq(osc(440, { type: 'sine', duration: 0.5, detune: 100 }), 2205, 19845), 466.16, 4, 'detune +100¢ → A#4')
 })
+
+import { dtmf, pluck, risset, rhythm, adsr, lfo, wavetable, membrane, voice } from './index.js'
+
+test('dtmf — digit 5 carries 770 + 1336 Hz, not 697/1209', () => {
+	let d = dtmf('5', { fs: 44100 })
+	let g = (x, f) => { let w = 2 * Math.PI * f / 44100, cw = Math.cos(w), s1 = 0, s2 = 0; for (let i = 0; i < 3000; i++) { let s0 = x[i] + 2 * cw * s1 - s2; s2 = s1; s1 = s0 } return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - 2 * cw * s1 * s2)) / 3000 }
+	ok(g(d, 770) > g(d, 697) * 5 && g(d, 1336) > g(d, 1209) * 5, 'right pair')
+})
+
+test('pluck — pitch tracks freq, energy decays', () => {
+	let d = pluck(220, { duration: 1 })
+	let g = (x, f) => { let w = 2 * Math.PI * f / 44100, cw = Math.cos(w), s1 = 0, s2 = 0; for (let i = 8821; i < 30870; i++) { let s0 = x[i] + 2 * cw * s1 - s2; s2 = s1; s1 = s0 } return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - 2 * cw * s1 * s2)) / 22049 }
+	ok(g(d, 220) > g(d, 171) * 5 && g(d, 220) > g(d, 110), 'fundamental at 220 dominant')
+	let e = (from, to) => { let s = 0; for (let i = from; i < to; i++) s += d[i] * d[i]; return s }
+	ok(e(0, 11025) > e(33075, 44100) * 3, 'decays')
+})
+
+test('risset/membrane/rhythm — finite, decaying, grid-timed', () => {
+	let r = risset(100)
+	ok(r.every(isFinite) && Math.max(...r.slice(0, 8000).map(Math.abs)) > Math.max(...r.slice(-8000).map(Math.abs)) * 2)
+	let k = membrane({})
+	ok(k.every(isFinite) && Math.abs(k[100]) >= 0)
+	let click = rhythm({ bpm: 120, bars: 1, beats: 4 })
+	// clicks at 0, 0.5s, 1.0s, 1.5s
+	let e = at => { let s = 0, i0 = Math.round(at * 44100); for (let i = i0; i < i0 + 600; i++) s += click[i] * click[i]; return s }
+	ok(e(0.5) > e(0.25) * 20, 'beat at 0.5 s, silence at 0.25 s')
+})
+
+test('adsr/lfo — shape points', () => {
+	let e = adsr({ attack: 0.1, decay: 0.1, sustain: 0.5, duration: 0.5, release: 0.2, fs: 1000 })
+	almost(e[50], 0.5, 0.02, 'mid attack')
+	almost(e[100], 1, 0.02, 'peak')
+	almost(e[300], 0.5, 0.02, 'sustain')
+	ok(e[e.length - 1] < 0.05, 'released')
+	let l = lfo(2, { duration: 1, fs: 1000, type: 'triangle', unipolar: true })
+	ok(Math.min(...l) >= 0 && Math.max(...l) <= 1, 'unipolar bounds')
+	almost(l[0], 0, 0.01, 'triangle starts at trough')
+	almost(l[125], 0.5, 0.01, 'quarter cycle at mid')
+})
+
+test('wavetable — pos 0 plays table A, pos 1 plays table B', () => {
+	let N = 512
+	let sineT = new Float32Array(N), sqT = new Float32Array(N)
+	for (let i = 0; i < N; i++) { sineT[i] = Math.sin(2 * Math.PI * i / N); sqT[i] = i < N / 2 ? 1 : -1 }
+	let g = (x, f) => { let w = 2 * Math.PI * f / 44100, cw = Math.cos(w), s1 = 0, s2 = 0; for (let i = 2048; i < x.length - 2048; i++) { let s0 = x[i] + 2 * cw * s1 - s2; s2 = s1; s1 = s0 } return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - 2 * cw * s1 * s2)) / (x.length - 4096) }
+	let a = wavetable(440, { tables: [sineT, sqT], position: 0, duration: 0.4 })
+	let b = wavetable(440, { tables: [sineT, sqT], position: 1, duration: 0.4 })
+	ok(g(b, 1320) > g(a, 1320) * 5, 'square table has 3rd harmonic, sine table does not')
+})
+
+test('voice — enveloped, filtered, pitched, finite', () => {
+	let v = voice(220, {})
+	ok(v.every(isFinite))
+	ok(v[v.length - 1] === 0 || Math.abs(v[v.length - 1]) < 0.02, 'released')
+	let c = 0
+	for (let i = 2206; i < 15435; i++) if ((v[i - 1] < 0) !== (v[i] < 0)) c++
+	almost(c / 2 * 44100 / 13229, 220, 12, 'pitch-ish through filter')
+})

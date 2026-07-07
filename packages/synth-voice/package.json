@@ -1,19 +1,33 @@
 {
   "name": "@audio/synth-voice",
-  "version": "0.0.0",
-  "description": "Synth voice — oscillator + envelope + filter (Tone.js Synth/FMSynth/AMSynth class)",
+  "version": "1.0.0",
+  "description": "Synth voice — osc × ADSR through envelope-scaled lowpass (Tone.js Synth class)",
   "type": "module",
   "sideEffects": false,
-  "private": true,
+  "main": "voice.js",
+  "exports": {
+    ".": "./voice.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "voice.js"
+  ],
+  "dependencies": {
+    "@audio/synth-osc": "^1.0.0",
+    "@audio/synth-envelope": "^1.0.0"
+  },
   "keywords": [
     "audio",
     "dsp",
-    "voice",
-    "synthesizer"
+    "synth",
+    "voice"
   ],
   "license": "MIT",
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
