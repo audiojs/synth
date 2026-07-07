@@ -1,17 +1,20 @@
 {
   "name": "@audio/synth-noise",
   "version": "1.0.0",
-  "description": "Pink noise filter (1/f spectral slope, -3dB/octave)",
+  "description": "Colors of noise — white, pink (Kellet), brown, blue, violet; seeded, slope-verified",
   "type": "module",
   "sideEffects": false,
   "main": "pink-noise.js",
   "exports": {
     ".": "./pink-noise.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./colors": "./colors.js",
+    "./pink": "./pink-noise.js"
   },
   "files": [
     "pink-noise.js",
-    "pink-noise.d.ts"
+    "pink-noise.d.ts",
+    "colors.js"
   ],
   "keywords": [
     "audio",
