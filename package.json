@@ -1,0 +1,45 @@
+{
+  "name": "@audio/synth",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "description": "Synthesis & signal generators — umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "node test.js",
+    "test:all": "npm test --workspaces --if-present && npm test",
+    "publish:all": "npm publish --workspaces && npm publish"
+  },
+  "dependencies": {
+    "@audio/synth-noise": "^1.0.0"
+  },
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "generator",
+    "noise",
+    "oscillator"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "tst": "^9.4.0"
+  }
+}

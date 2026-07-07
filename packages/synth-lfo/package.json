@@ -1,0 +1,19 @@
+{
+  "name": "@audio/synth-lfo",
+  "version": "0.0.0",
+  "description": "LFO — low-frequency oscillator for parameter modulation",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "lfo"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@audio/synth-noise",
+  "version": "1.0.0",
+  "description": "Pink noise filter (1/f spectral slope, -3dB/octave)",
+  "type": "module",
+  "sideEffects": false,
+  "main": "pink-noise.js",
+  "exports": {
+    ".": "./pink-noise.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "pink-noise.js",
+    "pink-noise.d.ts"
+  ],
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "noise",
+    "pink-noise"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "pink-noise.d.ts"
+}

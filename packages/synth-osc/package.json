@@ -1,0 +1,19 @@
+{
+  "name": "@audio/synth-osc",
+  "version": "0.0.0",
+  "description": "Oscillator — sine/square/saw/triangle source with detune, pulse width, partials (wraps periodic-function)",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "oscillator"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}

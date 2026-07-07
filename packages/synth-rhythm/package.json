@@ -1,0 +1,20 @@
+{
+  "name": "@audio/synth-rhythm",
+  "version": "0.0.0",
+  "description": "Rhythm track — metronome/click track generator at a given BPM",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "metronome",
+    "click-track"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}

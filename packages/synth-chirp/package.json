@@ -1,0 +1,20 @@
+{
+  "name": "@audio/synth-chirp",
+  "version": "0.0.0",
+  "description": "Chirp — linear/log frequency sweep generator",
+  "type": "module",
+  "sideEffects": false,
+  "private": true,
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "chirp",
+    "sweep"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  }
+}
