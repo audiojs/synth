@@ -1,9 +1,9 @@
 {
   "name": "@audio/synth",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "sideEffects": false,
-  "description": "Synthesis & signal generators \u2014 umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
+  "description": "Synthesis & signal generators — umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
