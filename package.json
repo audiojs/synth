@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "sideEffects": false,
-  "description": "Synthesis & signal generators — umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
+  "description": "Synthesis & signal generators \u2014 umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -32,7 +32,9 @@
     "@audio/synth-lfo": "^1.0.0",
     "@audio/synth-wavetable": "^1.0.0",
     "@audio/synth-drum": "^1.0.0",
-    "@audio/synth-voice": "^1.0.0"
+    "@audio/synth-voice": "^1.0.0",
+    "@audio/synth-poly": "^1.0.0",
+    "@audio/synth-sfx": "^1.0.0"
   },
   "keywords": [
     "audio",

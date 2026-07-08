@@ -155,3 +155,72 @@ test('voice — enveloped, filtered, pitched, finite', () => {
 	for (let i = 2206; i < 15435; i++) if ((v[i - 1] < 0) !== (v[i] < 0)) c++
 	almost(c / 2 * 44100 / 13229, 220, 12, 'pitch-ish through filter')
 })
+
+import poly from '@audio/synth-poly'
+import sfx from '@audio/synth-sfx'
+
+function goertzel (d, f, fs = 44100, from = 0, to = d.length) {
+	let w = 2 * Math.PI * f / fs, cw = Math.cos(w), s1 = 0, s2 = 0
+	for (let i = from; i < to; i++) { let s0 = d[i] + 2 * cw * s1 - s2; s2 = s1; s1 = s0 }
+	return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - 2 * cw * s1 * s2)) / (to - from)
+}
+
+test('poly — chord mixes voices at their notes, honors timing', () => {
+	let out = poly([
+		{ time: 0, midi: 60, duration: 0.5 },
+		{ time: 0, midi: 64, duration: 0.5 },
+		{ time: 0.6, midi: 67, duration: 0.3 },
+	], { voice: (f, { fs, duration }) => osc(f, { duration, fs, amp: 0.3 }), fs: 44100 })
+	let C = goertzel(out, 261.63, 44100, 0, 22050), E = goertzel(out, 329.63, 44100, 0, 22050)
+	let Glate = goertzel(out, 392, 44100, 26460, 39690)
+	let Gearly = goertzel(out, 392, 44100, 0, 22050)
+	ok(C > 0.05 && E > 0.05, 'chord tones present')
+	ok(Glate > Gearly * 5, 'third note enters on schedule')
+	ok(out.every(isFinite))
+})
+
+test('poly — voice stealing caps simultaneity without clicks', () => {
+	let notes = []
+	for (let i = 0; i < 8; i++) notes.push({ time: i * 0.01, midi: 60 + i, duration: 1 })
+	let out = poly(notes, { voices: 2, voice: (f, { fs, duration }) => osc(f, { duration, fs, amp: 0.5 }), fs: 44100 })
+	let peak = 0
+	for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]))
+	ok(peak < 0.5 * 3, `≤2 voices sound at once (peak ${peak.toFixed(2)})`)
+	let maxJump = 0
+	for (let i = 1; i < out.length; i++) maxJump = Math.max(maxJump, Math.abs(out[i] - out[i - 1]))
+	ok(maxJump < 0.25, `steal fades, no clicks (jump ${maxJump.toFixed(3)})`)
+})
+
+test('poly — requires a voice', () => {
+	let threw = false
+	try { poly([{ midi: 60 }], {}) } catch { threw = true }
+	ok(threw)
+})
+
+test('sfx — presets render, deterministic, finite', () => {
+	for (let name of ['pickup', 'laser', 'explosion', 'powerup', 'hit', 'jump', 'blip', 'coin']) {
+		let a = sfx(name), b = sfx(name)
+		ok(a.length > 1000, name + ' has body')
+		ok(a.every(isFinite), name + ' finite')
+		let same = true
+		for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { same = false; break }
+		ok(same, name + ' deterministic')
+	}
+})
+
+test('sfx — laser slides down, pickup arpeggiates up', () => {
+	let l = sfx('laser', { fs: 44100 })
+	// zero-crossing rate early vs late — downward slide
+	let zc = (d, a, b) => { let c = 0; for (let i = a + 1; i < b; i++) if ((d[i-1] < 0) !== (d[i] < 0)) c++; return c / (b - a) }
+	ok(zc(l, 0, 2000) > zc(l, l.length - 3000, l.length - 1000) * 1.3, 'laser pitch falls')
+	let p = sfx('pickup', { fs: 44100 })
+	ok(zc(p, p.length - 4000, p.length - 2000) > zc(p, 0, 2000) * 1.2, 'pickup steps up')
+})
+
+test('sfx — unknown preset throws, object preset works', () => {
+	let threw = false
+	try { sfx('nosuch') } catch { threw = true }
+	ok(threw)
+	let o = sfx({ freq: 440, shape: 'sine', attack: 0.01, sustain: 0.1, release: 0.1 })
+	almost(goertzel(o, 440, 44100, 500, 4000) > 0.1, true)
+})

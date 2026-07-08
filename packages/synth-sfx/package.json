@@ -1,10 +1,9 @@
 {
   "name": "@audio/synth-sfx",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Game/UI sound effects generator — ZZFX / ChipTone class parameterized synthesis",
   "type": "module",
   "sideEffects": false,
-  "private": true,
   "keywords": [
     "audio",
     "synth",
@@ -16,5 +15,16 @@
   "author": "Dmitry Iv. <dfcreative@gmail.com>",
   "engines": {
     "node": ">=18"
+  },
+  "main": "sfx.js",
+  "exports": {
+    ".": "./sfx.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "sfx.js"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
