@@ -8,11 +8,11 @@
   "exports": {
     ".": "./osc.js",
     "./package.json": "./package.json",
-    "./am": "./am.js"
+    "./audio-module": "./audio-module.js"
   },
   "files": [
     "osc.js",
-    "am.js"
+    "audio-module.js"
   ],
   "dependencies": {
     "periodic-function": "^2.1.0"
@@ -31,5 +31,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "audio-module": "./am.js"
+  "audio-module": "./audio-module.js"
 }
