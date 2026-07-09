@@ -21,20 +21,21 @@
     "publish:all": "npm publish --workspaces && npm publish"
   },
   "dependencies": {
-    "@audio/synth-noise": "^1.0.0",
     "@audio/synth-chirp": "^1.0.0",
-    "@audio/synth-osc": "^1.0.0",
+    "@audio/synth-drum": "^1.0.0",
     "@audio/synth-dtmf": "^1.0.0",
-    "@audio/synth-pluck": "^1.0.0",
-    "@audio/synth-risset": "^1.0.0",
-    "@audio/synth-rhythm": "^1.0.0",
     "@audio/synth-envelope": "^1.0.0",
     "@audio/synth-lfo": "^1.0.0",
-    "@audio/synth-wavetable": "^1.0.0",
-    "@audio/synth-drum": "^1.0.0",
-    "@audio/synth-voice": "^1.0.0",
+    "@audio/synth-noise": "^1.0.0",
+    "@audio/synth-osc": "^1.0.0",
+    "@audio/synth-pluck": "^1.0.0",
     "@audio/synth-poly": "^1.0.0",
-    "@audio/synth-sfx": "^1.0.0"
+    "@audio/synth-rhythm": "^1.0.0",
+    "@audio/synth-risset": "^1.0.0",
+    "@audio/synth-sfx": "^1.0.0",
+    "@audio/synth-voice": "^1.0.0",
+    "@audio/synth-wavetable": "^1.0.0",
+    "periodic-function": "^2.1.1"
   },
   "keywords": [
     "audio",
@@ -53,7 +54,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "tst": "^9.4.0",
-    "fourier-transform": "^2.2.0"
+    "fourier-transform": "^2.2.0",
+    "tst": "^9.4.0"
   }
 }
