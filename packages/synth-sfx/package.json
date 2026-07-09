@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-sfx",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Game/UI sound effects generator — ZZFX / ChipTone class parameterized synthesis",
   "type": "module",
   "sideEffects": false,
@@ -19,12 +19,15 @@
   "main": "sfx.js",
   "exports": {
     ".": "./sfx.js",
+    "./atom": "./atom.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "sfx.js"
+    "sfx.js",
+    "atom.js"
   ],
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "atom": "./atom.js"
 }

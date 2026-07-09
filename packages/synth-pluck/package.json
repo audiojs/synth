@@ -1,16 +1,18 @@
 {
   "name": "@audio/synth-pluck",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Karplus-Strong plucked string synthesis",
   "type": "module",
   "sideEffects": false,
   "main": "pluck.js",
   "exports": {
     ".": "./pluck.js",
+    "./atom": "./atom.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "pluck.js"
+    "pluck.js",
+    "atom.js"
   ],
   "keywords": [
     "audio",
@@ -25,5 +27,6 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "atom": "./atom.js"
 }
