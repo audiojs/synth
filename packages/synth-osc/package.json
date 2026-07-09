@@ -1,18 +1,18 @@
 {
   "name": "@audio/synth-osc",
-  "version": "1.0.0",
-  "description": "Oscillator \u2014 sine/square/sawtooth/triangle with detune (wraps periodic-function)",
+  "version": "1.0.1",
+  "description": "Oscillator — sine/square/sawtooth/triangle with detune (wraps periodic-function)",
   "type": "module",
   "sideEffects": false,
   "main": "osc.js",
   "exports": {
     ".": "./osc.js",
     "./package.json": "./package.json",
-    "./audio-module": "./audio-module.js"
+    "./atom": "./atom.js"
   },
   "files": [
     "osc.js",
-    "audio-module.js"
+    "atom.js"
   ],
   "dependencies": {
     "periodic-function": "^2.1.0"
@@ -31,5 +31,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "audio-module": "./audio-module.js"
+  "atom": "./atom.js"
 }

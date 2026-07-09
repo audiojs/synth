@@ -1,4 +1,4 @@
-// audio-module manifest — oscillator as a generator: no input bus, phase in closure.
+// atom manifest — oscillator as a generator: no input bus, phase in closure.
 
 import { sine, square, sawtooth, triangle } from 'periodic-function'
 
