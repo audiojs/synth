@@ -224,3 +224,13 @@ test('sfx — unknown preset throws, object preset works', () => {
 	let o = sfx({ freq: 440, shape: 'sine', attack: 0.01, sustain: 0.1, release: 0.1 })
 	almost(goertzel(o, 440, 44100, 500, 4000) > 0.1, true)
 })
+
+test('chirp — degenerate sweep (f0 === f1) is a constant tone, not NaN', () => {
+	let d = chirp({ f0: 20000, f1: 20000, duration: 0.2, fs: 44100 })
+	ok([...d].every(Number.isFinite), 'finite')
+	// constant frequency: zero-crossing rate ≈ f0
+	let zc = 0
+	for (let i = 1; i < d.length; i++) if ((d[i - 1] < 0) !== (d[i] < 0)) zc++
+	let hz = zc / 2 / 0.2
+	ok(Math.abs(hz - 20000) < 250, `constant tone at f0 (${hz.toFixed(0)}Hz)`)
+})

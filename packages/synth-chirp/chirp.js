@@ -11,12 +11,17 @@ export default function chirp ({ f0 = 20, f1, duration = 1, fs = 44100, method =
 	f1 ||= fs / 2 * 0.95
 	let n = Math.round(duration * fs)
 	let d = new Float32Array(n)
-	if (method === 'exp') {
-		let L = duration / Math.log(f1 / f0)
+	let R = Math.log(f1 / f0)
+	if (method === 'exp' && Math.abs(R) > 1e-9) {
+		let L = duration / R
 		for (let i = 0; i < n; i++) {
 			let t = i / fs
 			d[i] = amp * Math.sin(2 * Math.PI * f0 * L * (Math.exp(t / L) - 1))
 		}
+	} else if (method === 'exp') {
+		// degenerate sweep (f1 === f0): the analytic limit is a constant tone —
+		// L = duration/log(1) would be ∞ → NaN
+		for (let i = 0; i < n; i++) d[i] = amp * Math.sin(2 * Math.PI * f0 * i / fs)
 	} else {
 		let k = (f1 - f0) / duration
 		for (let i = 0; i < n; i++) {
