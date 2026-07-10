@@ -1,18 +1,22 @@
 {
   "name": "@audio/synth-chirp",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Chirp — linear/exponential frequency sweep (ESS measurement signal, Farina 2000)",
   "type": "module",
   "sideEffects": false,
   "main": "chirp.js",
   "exports": {
     ".": "./chirp.js",
-    "./audio": "./audio.js",
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "chirp.js",
-    "audio.js"
+    "audio.js",
+    "audio.d.ts"
   ],
   "keywords": [
     "audio",

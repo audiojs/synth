@@ -19,12 +19,16 @@
   "main": "sfx.js",
   "exports": {
     ".": "./sfx.js",
-    "./audio": "./audio.js",
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "sfx.js",
-    "audio.js"
+    "audio.js",
+    "audio.d.ts"
   ],
   "publishConfig": {
     "access": "public"

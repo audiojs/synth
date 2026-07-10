@@ -9,14 +9,18 @@
     ".": "./pink-noise.js",
     "./colors": "./colors.js",
     "./pink": "./pink-noise.js",
-    "./audio": "./audio.js",
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "pink-noise.js",
     "pink-noise.d.ts",
     "colors.js",
-    "audio.js"
+    "audio.js",
+    "audio.d.ts"
   ],
   "keywords": [
     "audio",

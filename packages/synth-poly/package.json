@@ -17,12 +17,16 @@
   "main": "poly.js",
   "exports": {
     ".": "./poly.js",
-    "./audio": "./audio.js",
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "poly.js",
-    "audio.js"
+    "audio.js",
+    "audio.d.ts"
   ],
   "publishConfig": {
     "access": "public"
