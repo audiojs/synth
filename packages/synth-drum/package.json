@@ -1,18 +1,18 @@
 {
   "name": "@audio/synth-drum",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Drum synthesis — membrane kick, metal cymbal, noise snare (Tone.js class)",
   "type": "module",
   "sideEffects": false,
   "main": "drum.js",
   "exports": {
     ".": "./drum.js",
-    "./atom": "./atom.js",
+    "./audio": "./audio.js",
     "./package.json": "./package.json"
   },
   "files": [
     "drum.js",
-    "atom.js"
+    "audio.js"
   ],
   "keywords": [
     "audio",
@@ -28,5 +28,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "atom": "./atom.js"
+  "audio": "./audio.js"
 }
