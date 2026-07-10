@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-rhythm",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Rhythm / click track — BPM grid with accented downbeats",
   "type": "module",
   "sideEffects": false,

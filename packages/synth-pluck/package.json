@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-pluck",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Karplus-Strong plucked string synthesis",
   "type": "module",
   "sideEffects": false,

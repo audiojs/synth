@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-osc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Oscillator — sine/square/sawtooth/triangle with detune (wraps periodic-function)",
   "type": "module",
   "sideEffects": false,

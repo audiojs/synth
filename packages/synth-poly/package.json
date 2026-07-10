@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-poly",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Polyphonic voice allocator — wrap any voice with N-voice polyphony",
   "type": "module",
   "sideEffects": false,
