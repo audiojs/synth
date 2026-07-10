@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-voice",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Synth voice — osc × ADSR through envelope-scaled lowpass (Tone.js Synth class)",
   "type": "module",
   "sideEffects": false,
