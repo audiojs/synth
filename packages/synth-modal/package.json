@@ -1,0 +1,36 @@
+{
+  "name": "@audio/synth-modal",
+  "version": "0.1.0",
+  "description": "Modal synthesis — two-pole resonator bank (string/bar/membrane/plate/tube), impulse or noise excited",
+  "type": "module",
+  "sideEffects": false,
+  "main": "modal.js",
+  "exports": {
+    ".": "./modal.js",
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "modal.js",
+    "audio.js",
+    "audio.d.ts"
+  ],
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "modal"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "audio": "./audio.js"
+}

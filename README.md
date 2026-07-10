@@ -15,6 +15,8 @@
 | `@audio/synth-lfo` | planned | LFO |
 | `@audio/synth-voice` | planned | osc+env+filter voice (Tone.js Synth class) |
 | `@audio/synth-drum` | planned | membrane/metal/noise percussion |
+| `@audio/synth-fm` | ✔ | FM (phase modulation) synthesis — Chowning 1973, single-op or serial stack, bell/epiano presets |
+| `@audio/synth-modal` | ✔ | modal synthesis — two-pole resonator bank (string/bar/membrane/plate/tube), impulse/noise excited |
 | `@audio/synth-poly` | planned | polyphonic voice allocator |
 
 Parity targets: Audacity generators, Tone.js synthesis primitives. `pink-noise` extracted from audio-filter; musical test synths also live in `beat/synth.js` + `beat/floatbeats.js` (future `floatbeats` fixtures package).
