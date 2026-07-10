@@ -57,5 +57,9 @@
   "devDependencies": {
     "fourier-transform": "^2.2.0",
     "tst": "^9.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/synth.git"
   }
 }

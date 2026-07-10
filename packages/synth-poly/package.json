@@ -35,5 +35,10 @@
   "dependencies": {
     "@audio/synth-voice": "^1.1.0",
     "@audio/note": "^1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/synth.git",
+    "directory": "packages/synth-poly"
   }
 }
