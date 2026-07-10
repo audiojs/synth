@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-fm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FM synthesis — Chowning phase modulation, single-op or serial op stack, bell/epiano presets",
   "type": "module",
   "sideEffects": false,

@@ -20,7 +20,8 @@
   ],
   "dependencies": {
     "@audio/synth-osc": "^1.0.0",
-    "@audio/synth-envelope": "^1.0.0"
+    "@audio/synth-envelope": "^1.0.0",
+    "@audio/note": "^1.0.0"
   },
   "keywords": [
     "audio",

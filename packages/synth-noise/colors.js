@@ -1,8 +1,13 @@
 // Colors of noise — seeded, deterministic generators with defined spectral slopes:
 // white 0 dB/oct · pink −3 (Kellet filter) · brown −6 (leaky integration) ·
 // blue +3 (differentiated pink) · violet +6 (differentiated white).
+//
+// Public API is (duration, opts) in SECONDS — the family convention every other
+// generator follows (osc, chirp, fm…). Sample-count cores stay private: the
+// differentiators (blue, violet) need exact n+1-sample sources.
 
 import pinkNoise from './pink-noise.js'
+export { default as pinkNoise } from './pink-noise.js'
 
 function lcg (seed) {
 	let s = seed >>> 0 || 1
@@ -18,20 +23,20 @@ function normalize (d, peak = 0.9) {
 	return d
 }
 
-export function white (n, { seed = 1 } = {}) {
+function whiteN (n, seed) {
 	let rand = lcg(seed)
 	let d = new Float32Array(n)
 	for (let i = 0; i < n; i++) d[i] = rand() * 0.9
 	return d
 }
 
-export function pink (n, opts = {}) {
-	let d = Float64Array.from(white(n, opts))
+function pinkN (n, seed) {
+	let d = Float64Array.from(whiteN(n, seed))
 	pinkNoise(d, {})
 	return normalize(Float32Array.from(d))
 }
 
-export function brown (n, { seed = 1, leak = 0.999 } = {}) {
+function brownN (n, seed, leak) {
 	let rand = lcg(seed)
 	let d = new Float32Array(n)
 	let y = 0
@@ -39,23 +44,29 @@ export function brown (n, { seed = 1, leak = 0.999 } = {}) {
 	return normalize(d)
 }
 
-export function blue (n, opts = {}) {
-	let p = pink(n + 1, opts)
+function blueN (n, seed) {
+	let p = pinkN(n + 1, seed)
 	let d = new Float32Array(n)
 	for (let i = 0; i < n; i++) d[i] = p[i + 1] - p[i]
 	return normalize(d)
 }
 
-export function violet (n, opts = {}) {
-	let w = white(n + 1, opts)
+function violetN (n, seed) {
+	let w = whiteN(n + 1, seed)
 	let d = new Float32Array(n)
 	for (let i = 0; i < n; i++) d[i] = w[i + 1] - w[i]
 	return normalize(d)
 }
 
-/** noise(n, { color: 'white'|'pink'|'brown'|'blue'|'violet', seed }) */
-export default function noise (n, { color = 'white', ...opts } = {}) {
+export function white (duration = 1, { seed = 1, fs = 44100 } = {}) { return whiteN(Math.round(duration * fs), seed) }
+export function pink (duration = 1, { seed = 1, fs = 44100 } = {}) { return pinkN(Math.round(duration * fs), seed) }
+export function brown (duration = 1, { seed = 1, leak = 0.999, fs = 44100 } = {}) { return brownN(Math.round(duration * fs), seed, leak) }
+export function blue (duration = 1, { seed = 1, fs = 44100 } = {}) { return blueN(Math.round(duration * fs), seed) }
+export function violet (duration = 1, { seed = 1, fs = 44100 } = {}) { return violetN(Math.round(duration * fs), seed) }
+
+/** noise(duration, { color: 'white'|'pink'|'brown'|'blue'|'violet', seed, fs }) — seconds */
+export default function noise (duration = 1, { color = 'white', ...opts } = {}) {
 	const GEN = { white, pink, brown, blue, violet }
 	if (!GEN[color]) throw new RangeError(`noise: unknown color "${color}"`)
-	return GEN[color](n, opts)
+	return GEN[color](duration, opts)
 }

@@ -1,23 +1,28 @@
+import { midiToHz } from '@audio/note'
+
 // Polyphonic voice allocator — renders note events through any voice function with
-// N-voice polyphony, oldest-note stealing, and per-note velocity. The voice is a plain
-// synthesis function (freq, {fs, duration, velocity}) → Float32Array, so every @audio
-// generator (osc, pluck, drum, wavetable…) is a valid voice.
+// N-voice polyphony, oldest-note stealing, and per-note velocity. The voice contract is
+// the family's generator shape: (freq, {fs, duration, velocity, ...voiceOpts}) →
+// Float32Array — every pitched @audio/synth generator satisfies it (osc, pluck, fm,
+// modal, drum's membrane/metal, bell, epiano, risset, wavetable…). Extra per-voice
+// config (fm's ratio/index, modal's model, wavetable's tables…) rides in via voiceOpts.
 
 /**
  * @param {Array} notes — [{ time, freq | midi, duration, velocity=1 }]
  * @param {object} opts — {
- *   voice: (freq, { fs, duration, velocity }) => Float32Array — required,
+ *   voice: (freq, { fs, duration, velocity, ...voiceOpts }) => Float32Array — required,
+ *   voiceOpts: {} — extra options forwarded to every voice call (e.g. wavetable's { tables }),
  *   voices: 16 — max simultaneous notes (oldest is stolen with a 5 ms fade),
  *   duration — total seconds (default: end of last note + 0.5),
  *   fs: 44100
  * }
  * @returns {Float32Array} mono mix
  */
-export default function poly (notes, { voice, voices = 16, duration, fs = 44100 } = {}) {
+export default function poly (notes, { voice, voices = 16, duration, fs = 44100, voiceOpts = {} } = {}) {
 	if (typeof voice !== 'function') throw new TypeError('poly: opts.voice function is required')
 	let evs = [...notes].map(n => ({
 		time: n.time ?? 0,
-		freq: n.freq ?? 440 * 2 ** (((n.midi ?? 69) - 69) / 12),
+		freq: n.freq ?? midiToHz(n.midi ?? 69),
 		duration: n.duration ?? 0.5,
 		velocity: n.velocity ?? 1,
 	})).sort((a, b) => a.time - b.time)
@@ -25,7 +30,7 @@ export default function poly (notes, { voice, voices = 16, duration, fs = 44100 
 	// render every note, then simulate allocation to decide steals (cut = absolute sample
 	// where the note is silenced; stolen notes get a short fade there instead of a click)
 	let rendered = evs.map(e => {
-		let d = voice(e.freq, { fs, duration: e.duration, velocity: e.velocity })
+		let d = voice(e.freq, { ...voiceOpts, fs, duration: e.duration, velocity: e.velocity })
 		let at = Math.round(e.time * fs)
 		return { at, data: d, cut: at + d.length, velocity: e.velocity }
 	})

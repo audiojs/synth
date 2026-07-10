@@ -11,8 +11,8 @@ export const modal = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
 	const n = out[0].length
-	const d = modalFn({
-		freq: params.freq[0], model: params.model, nmodes: params.nmodes[0] | 0,
+	const d = modalFn(params.freq[0], {
+		model: params.model, nmodes: params.nmodes[0] | 0,
 		t60: params.t60[0], damping: params.damping[0], inharmonicity: params.inharmonicity[0],
 		strike: params.strike[0], exciter: params.exciter, duration: n / ctx.sampleRate,
 		fs: ctx.sampleRate, amp: params.amp[0], seed: params.seed[0] | 0,

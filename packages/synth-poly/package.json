@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-poly",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Polyphonic voice allocator — wrap any voice with N-voice polyphony",
   "type": "module",
   "sideEffects": false,
@@ -33,6 +33,7 @@
   },
   "audio": "./audio.js",
   "dependencies": {
-    "@audio/synth-voice": "^1.1.0"
+    "@audio/synth-voice": "^1.1.0",
+    "@audio/note": "^1.0.0"
   }
 }

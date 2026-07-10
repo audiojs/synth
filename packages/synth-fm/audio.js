@@ -14,8 +14,8 @@ const place = (out, d) => {
 export const fm = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
-	place(out, fmFn({
-		freq: params.freq[0], ratio: params.ratio[0], index: params.index[0],
+	place(out, fmFn(params.freq[0], {
+		ratio: params.ratio[0], index: params.index[0],
 		indexDecay: params.indexDecay[0], indexFloor: params.indexFloor[0], feedback: params.feedback[0],
 		duration: out[0].length / ctx.sampleRate, fs: ctx.sampleRate, amp: params.amp[0],
 		attack: params.attack[0], release: params.release[0],
@@ -38,7 +38,7 @@ fm.params = {
 export const bell = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
-	place(out, bellFn({ freq: params.freq[0], duration: out[0].length / ctx.sampleRate, fs: ctx.sampleRate, amp: params.amp[0] }))
+	place(out, bellFn(params.freq[0], { duration: out[0].length / ctx.sampleRate, fs: ctx.sampleRate, amp: params.amp[0] }))
 }
 bell.channels = { inputs: [], outputs: 'any' }
 bell.streaming = false
@@ -50,7 +50,7 @@ bell.params = {
 export const epiano = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
-	place(out, epianoFn({ freq: params.freq[0], duration: out[0].length / ctx.sampleRate, fs: ctx.sampleRate, amp: params.amp[0] }))
+	place(out, epianoFn(params.freq[0], { duration: out[0].length / ctx.sampleRate, fs: ctx.sampleRate, amp: params.amp[0] }))
 }
 epiano.channels = { inputs: [], outputs: 'any' }
 epiano.streaming = false

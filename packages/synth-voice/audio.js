@@ -18,7 +18,7 @@ export const voice = (ctx) => {
 		const evs = ctx.events || []
 		const on = new Map()
 		const render = (slot, endSample) => {
-			const freq = 440 * 2 ** ((slot.pitch - 69) / 12)
+			const freq = midiToHz(slot.pitch)
 			const dur = Math.max(0.01, (endSample - slot.time) / sr)
 			const d = voiceFn(freq, {
 				fs: sr, duration: dur,

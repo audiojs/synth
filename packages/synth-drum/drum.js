@@ -1,7 +1,7 @@
 // Drum synthesis — membrane (pitch-dropping sine kick), metal (inharmonic square-ish
 // cymbal), noise (snare/hat band noise), Tone.js MembraneSynth/MetalSynth/NoiseSynth class.
 
-export function membrane ({ freq = 55, drop = 3, duration = 0.5, fs = 44100, amp = 0.9 } = {}) {
+export function membrane (freq = 55, { drop = 3, duration = 0.5, fs = 44100, amp = 0.9 } = {}) {
 	let n = Math.round(duration * fs)
 	let out = new Float32Array(n)
 	let phase = 0
@@ -14,7 +14,7 @@ export function membrane ({ freq = 55, drop = 3, duration = 0.5, fs = 44100, amp
 	return out
 }
 
-export function metal ({ freq = 200, duration = 0.6, fs = 44100, amp = 0.5 } = {}) {
+export function metal (freq = 200, { duration = 0.6, fs = 44100, amp = 0.5 } = {}) {
 	const RATIOS = [1, 1.483, 1.932, 2.546, 2.63, 3.897] // classic FM-bell inharmonic set
 	let n = Math.round(duration * fs)
 	let out = new Float32Array(n)

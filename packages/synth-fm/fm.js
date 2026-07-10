@@ -13,8 +13,8 @@
 const decayed = (v0, floor, tau, t) => tau > 0 ? floor + (v0 - floor) * Math.exp(-t / tau) : v0
 
 /**
+ * @param {number} freq — carrier Hz (positional — family convention: every pitched generator is (freq, opts))
  * @param {object} opts
- * @param {number} freq — carrier Hz
  * @param {number} ratio — modulator:carrier frequency ratio (single-op form)
  * @param {number} index — peak modulation index I, radians
  * @param {number} indexDecay — seconds (time constant); exp decay of index toward indexFloor; 0 = static
@@ -25,8 +25,8 @@ const decayed = (v0, floor, tau, t) => tau > 0 ? floor + (v0 - floor) * Math.exp
  *   Overrides ratio/index/indexDecay/indexFloor/feedback — the single-op form is just ops=[{...}].
  * @returns {Float32Array}
  */
-export default function fm ({
-	freq = 440, ratio = 2, index = 5, indexDecay = 0, indexFloor = 0, feedback = 0,
+export default function fm (freq = 440, {
+	ratio = 2, index = 5, indexDecay = 0, indexFloor = 0, feedback = 0,
 	ops = null,
 	duration = 1, fs = 44100, amp = 0.8, attack = 0.005, release = 0.1,
 } = {}) {
@@ -69,12 +69,12 @@ export default function fm ({
 // Chowning 1973's bell/gong instrument: an inharmonic c:m = 1:1.4 ratio (§ the "simple FM"
 // bell example) with a bright onset whose modulation index decays over a couple of seconds —
 // brightness tracking amplitude decay is the trick that makes it read as a struck metal body.
-export function bell ({ freq = 440, duration = 4, ...opts } = {}) {
-	return fm({ freq, ratio: 1.4, index: 10, indexDecay: 2, indexFloor: 0, duration, attack: 0.001, release: duration * 0.6, ...opts })
+export function bell (freq = 440, { duration = 4, ...opts } = {}) {
+	return fm(freq, { ratio: 1.4, index: 10, indexDecay: 2, indexFloor: 0, duration, attack: 0.001, release: duration * 0.6, ...opts })
 }
 
 // Classic 2-operator DX7-style electric piano voicing (folklore, not from Chowning's paper):
 // near-unison ratio, moderate index, fast decay — the familiar FM e-piano "bark" transient.
-export function epiano ({ freq = 440, duration = 1.5, ...opts } = {}) {
-	return fm({ freq, ratio: 1, index: 3, indexDecay: 0.15, indexFloor: 0.3, duration, attack: 0.002, release: duration * 0.3, ...opts })
+export function epiano (freq = 440, { duration = 1.5, ...opts } = {}) {
+	return fm(freq, { ratio: 1, index: 3, indexDecay: 0.15, indexFloor: 0.3, duration, attack: 0.002, release: duration * 0.3, ...opts })
 }

@@ -1,5 +1,5 @@
 import test, { almost, ok, is } from 'tst'
-import pinkNoise from '@audio/synth-noise'
+import { pinkNoise } from '@audio/synth-noise'
 const audio = { pinkNoise }
 import { dftMag, magDB, impulse, dc, EPSILON } from './test/util.js'
 
@@ -25,7 +25,7 @@ test('pinkNoise — spectral slope ~-3dB/octave', () => {
 })
 
 
-import { noise, chirp, osc } from './index.js'
+import { noise, white, chirp, osc } from './index.js'
 import { fft } from 'fourier-transform'
 
 // average magnitude spectrum (Welch), then dB slope between two frequencies
@@ -48,7 +48,7 @@ function slopeDbPerOct (d, fLo = 500, fHi = 8000, sr = 44100) {
 }
 
 test('noise colors — spectral slopes ordered and near nominal dB/oct', () => {
-	let n = 1 << 17
+	let n = (1 << 17) / 44100  // seconds — colors API is (duration, opts)
 	let s = {
 		brown: slopeDbPerOct(noise(n, { color: 'brown' })),
 		pink: slopeDbPerOct(noise(n, { color: 'pink' })),
@@ -62,7 +62,7 @@ test('noise colors — spectral slopes ordered and near nominal dB/oct', () => {
 	almost(s.brown, -6, 1.7, 'brown ~−6 (' + s.brown.toFixed(2) + ')')
 	almost(s.violet, 6, 1.7, 'violet ~+6 (' + s.violet.toFixed(2) + ')')
 	// deterministic
-	let a = noise(1024, { color: 'pink', seed: 7 }), b = noise(1024, { color: 'pink', seed: 7 })
+	let a = noise(1024 / 8000, { color: 'pink', seed: 7, fs: 8000 }), b = noise(1024 / 8000, { color: 'pink', seed: 7, fs: 8000 })
 	ok(a.every((v, i) => v === b[i]), 'seeded reproducible')
 })
 
@@ -117,7 +117,7 @@ test('pluck — pitch tracks freq, energy decays', () => {
 test('risset/membrane/rhythm — finite, decaying, grid-timed', () => {
 	let r = risset(100)
 	ok(r.every(isFinite) && Math.max(...r.slice(0, 8000).map(Math.abs)) > Math.max(...r.slice(-8000).map(Math.abs)) * 2)
-	let k = membrane({})
+	let k = membrane()
 	ok(k.every(isFinite) && Math.abs(k[100]) >= 0)
 	let click = rhythm({ bpm: 120, bars: 1, beats: 4 })
 	// clicks at 0, 0.5s, 1.0s, 1.5s
@@ -241,7 +241,7 @@ test('fm — Bessel sideband amplitudes match Chowning 1973 phase-modulation the
 	let fs = 48000, N = 32768
 	let freq = 2048 * fs / N   // exact bin 2048 -> 3000 Hz carrier
 	let ratio = 256 / 2048     // exact bin 256 -> 375 Hz modulator
-	let d = fm({ freq, ratio, index: 2.0, indexDecay: 0, indexFloor: 0, feedback: 0,
+	let d = fm(freq, { ratio, index: 2.0, indexDecay: 0, indexFloor: 0, feedback: 0,
 		duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
 	is(d.length, N)
 	let binHz = fs / N
@@ -255,7 +255,7 @@ test('fm — Bessel sideband amplitudes match Chowning 1973 phase-modulation the
 
 test('fm — index 0 collapses to a pure carrier sine', () => {
 	let fs = 48000, N = 32768, freq = 2048 * fs / N, binHz = fs / N
-	let d = fm({ freq, ratio: 0.125, index: 0, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
+	let d = fm(freq, { ratio: 0.125, index: 0, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
 	let carrier = dftMag(d, freq, fs), side = dftMag(d, freq + 256 * binHz, fs)
 	ok(side < carrier * 1e-3, `non-carrier energy ≥60dB below carrier (${(20 * Math.log10(side / carrier)).toFixed(0)}dB)`)
 })
@@ -267,8 +267,8 @@ test('fm — feedback broadens the modulator spectrum beyond the fundamental sid
 		for (let k = -4; k <= 4; k++) if (k !== 0 && dftMag(d, freq + k * 256 * binHz, fs) / peak >= 0.05) n++
 		return n
 	}
-	let d0 = fm({ freq, ratio, index, feedback: 0, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
-	let d1 = fm({ freq, ratio, index, feedback: Math.PI / 4, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
+	let d0 = fm(freq, { ratio, index, feedback: 0, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
+	let d1 = fm(freq, { ratio, index, feedback: Math.PI / 4, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
 	let n0 = sig(d0), n1 = sig(d1)
 	ok(n0 <= 2 && n1 >= 5 && n1 > n0, `feedback 0 -> ${n0} significant sidebands, feedback>0 -> ${n1}`)
 })
@@ -276,19 +276,19 @@ test('fm — feedback broadens the modulator spectrum beyond the fundamental sid
 test('fm — serial op stack produces combination-tone energy a single op lacks', () => {
 	let fs = 48000, N = 32768, freq = 2048 * fs / N, binHz = fs / N
 	let targetFreq = (2048 + 256 + 128) * binHz
-	let stack = fm({ freq, ops: [{ ratio: 0.0625, index: 3 }, { ratio: 0.125, index: 4 }],
+	let stack = fm(freq, { ops: [{ ratio: 0.0625, index: 3 }, { ratio: 0.125, index: 4 }],
 		duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
-	let single = fm({ freq, ratio: 0.125, index: 4, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
+	let single = fm(freq, { ratio: 0.125, index: 4, duration: N / fs, fs, amp: 1, attack: 0, release: 0 })
 	let mStack = dftMag(stack, targetFreq, fs), mSingle = dftMag(single, targetFreq, fs)
 	let db = 20 * Math.log10(mStack / Math.max(mSingle, 1e-12))
 	ok(db >= 20, `stack combination tone ${db.toFixed(0)}dB above single-op at the same bin`)
 })
 
 test('fm — deterministic; bell/epiano presets render, correct length, finite, non-silent', () => {
-	let a = fm({ freq: 300, ops: [{ ratio: 0.5, index: 3, feedback: 1 }, { ratio: 1.2, index: 2 }], duration: 0.2 })
-	let b = fm({ freq: 300, ops: [{ ratio: 0.5, index: 3, feedback: 1 }, { ratio: 1.2, index: 2 }], duration: 0.2 })
+	let a = fm(300, { ops: [{ ratio: 0.5, index: 3, feedback: 1 }, { ratio: 1.2, index: 2 }], duration: 0.2 })
+	let b = fm(300, { ops: [{ ratio: 0.5, index: 3, feedback: 1 }, { ratio: 1.2, index: 2 }], duration: 0.2 })
 	ok(a.every((v, i) => v === b[i]), 'identical buffers for identical calls')
-	let bl = bell({ freq: 220 }), ep = epiano({ freq: 220 })
+	let bl = bell(220), ep = epiano(220)
 	is(bl.length, Math.round(4 * 44100))
 	is(ep.length, Math.round(1.5 * 44100))
 	ok(bl.every(isFinite) && ep.every(isFinite), 'finite')
@@ -318,7 +318,7 @@ test('modal — bar (free-free beam) partial ratios match Fletcher & Rossing eig
 	let fs = 48000, N = 32768, freq = 512 * fs / N // exact bin 512 -> 750 Hz
 	// damping:0 and a neutral strike keep every mode ringing at full strength through the
 	// window — HF damping and strike-position nulling are exercised by their own tests below
-	let d = modal({ freq, model: 'bar', nmodes: 4, damping: 0, strike: 0.29, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { model: 'bar', nmodes: 4, damping: 0, strike: 0.29, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let ratios = [1, 2.7565, 5.4039, 8.9330]
 	let floor = localFloor(d, fs, N, ratios.map(r => Math.round(512 * r)))
 	for (let r of ratios) {
@@ -329,7 +329,7 @@ test('modal — bar (free-free beam) partial ratios match Fletcher & Rossing eig
 
 test('modal — membrane (ideal circular, fixed rim) partial ratios match Fletcher & Rossing Table 3.2', () => {
 	let fs = 48000, N = 32768, freq = 512 * fs / N
-	let d = modal({ freq, model: 'membrane', nmodes: 4, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { model: 'membrane', nmodes: 4, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let ratios = [1, 1.5933, 2.1355, 2.2954] // modes (01)(11)(21)(02)
 	let floor = localFloor(d, fs, N, ratios.map(r => Math.round(512 * r)))
 	for (let r of ratios) {
@@ -340,7 +340,7 @@ test('modal — membrane (ideal circular, fixed rim) partial ratios match Fletch
 
 test('modal — tube-closed carries odd harmonics only', () => {
 	let fs = 48000, N = 32768, freq = 512 * fs / N
-	let d = modal({ freq, model: 'tube-closed', nmodes: 4, damping: 0, strike: 0.29, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { model: 'tube-closed', nmodes: 4, damping: 0, strike: 0.29, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let m1 = dftMag(d, freq, fs), m2 = dftMag(d, 2 * freq, fs), m3 = dftMag(d, 3 * freq, fs), m4 = dftMag(d, 4 * freq, fs)
 	ok(m3 > m1 * 0.05, 'sanity: 3rd harmonic (mode 2) is actually present')
 	ok(m2 < m3 * Math.pow(10, -40 / 20), `2f1 ≥40dB below 3f1 (${(20 * Math.log10(m2 / m3)).toFixed(0)}dB)`)
@@ -349,7 +349,7 @@ test('modal — tube-closed carries odd harmonics only', () => {
 
 test('modal — per-mode T60 decays -60dB by t60 seconds', () => {
 	let fs = 44100, freq = 440
-	let d = modal({ freq, modes: [{ ratio: 1, t60: 0.5 }], exciter: 'impulse', duration: 0.6, fs, amp: 1 })
+	let d = modal(freq, { modes: [{ ratio: 1, t60: 0.5 }], exciter: 'impulse', duration: 0.6, fs, amp: 1 })
 	let m0 = dftMag(d.subarray(0, Math.round(0.05 * fs)), freq, fs)
 	let m1 = dftMag(d.subarray(Math.round(0.5 * fs), Math.round(0.55 * fs)), freq, fs)
 	almost(20 * Math.log10(m1 / m0), -60, 3, 'amplitude window at t=0.5s is -60dB vs t=0')
@@ -357,7 +357,7 @@ test('modal — per-mode T60 decays -60dB by t60 seconds', () => {
 
 test('modal — string strike at 0.5 kills even harmonics (sin(kπ/2)=0)', () => {
 	let fs = 48000, N = 32768, freq = 512 * fs / N
-	let d = modal({ freq, model: 'string', strike: 0.5, nmodes: 4, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { model: 'string', strike: 0.5, nmodes: 4, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let m1 = dftMag(d, freq, fs), m2 = dftMag(d, 2 * freq, fs), m3 = dftMag(d, 3 * freq, fs), m4 = dftMag(d, 4 * freq, fs)
 	let oddAvg = (m1 + m3) / 2
 	ok(m2 < oddAvg * Math.pow(10, -35 / 20), `2f1 ≥35dB below odd average (${(20 * Math.log10(m2 / oddAvg)).toFixed(0)}dB)`)
@@ -366,7 +366,7 @@ test('modal — string strike at 0.5 kills even harmonics (sin(kπ/2)=0)', () =>
 
 test('modal — string inharmonicity sharpens partial 4 to 4·f1·√(1+16B)', () => {
 	let fs = 48000, N = 32768, freq = 512 * fs / N, B = 0.001
-	let d = modal({ freq, model: 'string', nmodes: 4, strike: 0.29, inharmonicity: B, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { model: 'string', nmodes: 4, strike: 0.29, inharmonicity: B, exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let predictedBin = Math.round(4 * freq * Math.sqrt(1 + 16 * B) * N / fs)
 	let naiveBin = 4 * 512
 	ok(Math.abs(predictedBin - naiveBin) >= 10, 'sanity: prediction meaningfully differs from the naive (uninharmonic) bin')
@@ -379,20 +379,47 @@ test('modal — string inharmonicity sharpens partial 4 to 4·f1·√(1+16B)', (
 
 test('modal — custom modes ring at exactly the given ratios', () => {
 	let fs = 48000, N = 32768, freq = 512 * fs / N
-	let d = modal({ freq, modes: [{ ratio: 1 }, { ratio: 2.5 }], exciter: 'impulse', duration: N / fs, fs, amp: 1 })
+	let d = modal(freq, { modes: [{ ratio: 1 }, { ratio: 2.5 }], exciter: 'impulse', duration: N / fs, fs, amp: 1 })
 	let floor = localFloor(d, fs, N, [512, 1280])
 	ok(peakNear(d, 512, fs, N, 1) > floor * Math.pow(10, 30 / 20), 'mode 1 (ratio 1) present')
 	ok(peakNear(d, 1280, fs, N, 1) > floor * Math.pow(10, 30 / 20), 'mode 2 (ratio 2.5) present')
 })
 
 test('modal — deterministic, finite, default duration covers t60, all models render', () => {
-	let a = modal({ freq: 300, model: 'plate', seed: 5 }), b = modal({ freq: 300, model: 'plate', seed: 5 })
+	let a = modal(300, { model: 'plate', seed: 5 }), b = modal(300, { model: 'plate', seed: 5 })
 	ok(a.every((v, i) => v === b[i]), 'identical buffers for identical calls')
 	ok(a.every(isFinite), 'finite')
-	let d = modal({ freq: 300, model: 'membrane', t60: 1.5, exciter: 'noise', seed: 3 })
+	let d = modal(300, { model: 'membrane', t60: 1.5, exciter: 'noise', seed: 3 })
 	is(d.length, Math.round((1.5 * 1.2 + 0.05) * 44100))
 	for (let model of ['string', 'bar', 'membrane', 'plate', 'tube-open', 'tube-closed']) {
-		let m = modal({ freq: 220, model, duration: 0.3 })
+		let m = modal(220, { model, duration: 0.3 })
 		ok(m.every(isFinite) && m.some(v => Math.abs(v) > 0.001), `${model} renders, finite, non-silent`)
 	}
+})
+
+// --- audit 2026-07-10: generator signature unification (freq, opts) + poly contract ---
+
+test('poly — drum membrane as voice renders at note pitch (was: silent defaults)', () => {
+	let out = poly([{ time: 0, freq: 880, duration: 0.3, velocity: 1 }], { voice: membrane, fs: 44100 })
+	// membrane sweeps down onto freq; measure the tail where drop has settled
+	let tail = out.subarray(Math.round(0.15 * 44100), Math.round(0.25 * 44100))
+	let zc = 0
+	for (let i = 1; i < tail.length; i++) if (tail[i - 1] < 0 && tail[i] >= 0) zc++
+	let est = zc / (tail.length / 44100)
+	ok(Math.abs(est - 880) < 880 * 0.15, 'membrane voice pitched at note freq: ~' + est.toFixed(0) + ' Hz (want ≈880)')
+	ok(out.length >= Math.round(0.3 * 44100), 'note duration respected')
+})
+
+test('poly — voiceOpts forwards per-voice config (fm ratio/index)', () => {
+	let bright = poly([{ time: 0, freq: 440, duration: 0.2 }], { voice: fm, voiceOpts: { ratio: 2, index: 8 }, fs: 44100 })
+	let dull = poly([{ time: 0, freq: 440, duration: 0.2 }], { voice: fm, voiceOpts: { ratio: 2, index: 0 }, fs: 44100 })
+	// spectral spread ∝ index: brighter render has more sign changes
+	let zcOf = (d) => { let z = 0; for (let i = 1; i < d.length; i++) if (d[i - 1] < 0 && d[i] >= 0) z++; return z }
+	ok(zcOf(bright) > zcOf(dull) * 1.3, 'index raises spectral spread via voiceOpts')
+})
+
+test('noise — duration in seconds (family convention)', () => {
+	is(noise(0.5, { fs: 8000 }).length, 4000, '0.5 s at 8 kHz = 4000 samples')
+	is(white(1, { fs: 1000 }).length, 1000)
+	is(pinkNoise.name, 'pinkNoise', 'pink-noise filter still exported from package root')
 })

@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-modal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Modal synthesis — two-pole resonator bank (string/bar/membrane/plate/tube), impulse or noise excited",
   "type": "module",
   "sideEffects": false,

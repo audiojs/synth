@@ -12,7 +12,8 @@ export const noise = (ctx) => {
 		const n = out[0].length
 		const fn = colors[params.color]
 		for (let c = 0; c < out.length; c++) {
-			const d = fn(n, { seed: (params.seed[0] | 0) + c * 7919 })  // independent per channel
+			// colors API is seconds (family convention); n/fs·fs rounds back to exactly n samples
+			const d = fn(n / ctx.sampleRate, { fs: ctx.sampleRate, seed: (params.seed[0] | 0) + c * 7919 })  // independent per channel
 			const g = params.gain[0]
 			for (let i = 0; i < n; i++) out[c][i] = d[i] * g
 		}

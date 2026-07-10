@@ -13,7 +13,7 @@ const place = (out, d) => {
 export const kick = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
-	place(out, membrane({ freq: params.freq[0], drop: params.drop[0], duration: Math.min(out[0].length / ctx.sampleRate, 2), fs: ctx.sampleRate, amp: params.amp[0] }))
+	place(out, membrane(params.freq[0], { drop: params.drop[0], duration: Math.min(out[0].length / ctx.sampleRate, 2), fs: ctx.sampleRate, amp: params.amp[0] }))
 }
 kick.channels = { inputs: [], outputs: 'any' }
 kick.streaming = false
@@ -26,7 +26,7 @@ kick.params = {
 export const cymbal = (ctx) => (inputs, outputs, params) => {
 	const out = outputs[0]
 	if (!out || !out.length) return
-	place(out, metal({ freq: params.freq[0], duration: Math.min(out[0].length / ctx.sampleRate, 2), fs: ctx.sampleRate, amp: params.amp[0] }))
+	place(out, metal(params.freq[0], { duration: Math.min(out[0].length / ctx.sampleRate, 2), fs: ctx.sampleRate, amp: params.amp[0] }))
 }
 cymbal.channels = { inputs: [], outputs: 'any' }
 cymbal.streaming = false

@@ -53,8 +53,8 @@ function buildModes ({ model, modes, nmodes, inharmonicity }) {
 }
 
 /**
+ * @param {number} freq — fundamental (mode 1) Hz (positional — family convention: (freq, opts))
  * @param {object} opts
- * @param {number} freq — fundamental (mode 1) Hz
  * @param {string} model — 'string'|'bar'|'membrane'|'plate'|'tube-open'|'tube-closed'
  * @param {object[]} [modes] — custom [{ratio, gain?, t60?}, ...], overrides model/nmodes/inharmonicity
  * @param {number} nmodes — modes to draw from the model's table/series
@@ -69,8 +69,8 @@ function buildModes ({ model, modes, nmodes, inharmonicity }) {
  * @param {?number} duration — default: covers the slowest mode's t60 (t60·1.2 + 0.05)
  * @returns {Float32Array}
  */
-export default function modal ({
-	freq = 440, model = 'bar', modes = null, nmodes = 8, t60 = 2, damping = 0.7,
+export default function modal (freq = 440, {
+	model = 'bar', modes = null, nmodes = 8, t60 = 2, damping = 0.7,
 	inharmonicity = 0, strike = 0.5, exciter = 'impulse', duration = null,
 	fs = 44100, amp = 0.8, seed = 9,
 } = {}) {
