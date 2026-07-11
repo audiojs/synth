@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-fm",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "FM synthesis — Chowning phase modulation, single-op or serial op stack, bell/epiano presets",
   "type": "module",
   "sideEffects": false,
@@ -15,9 +15,11 @@
   },
   "files": [
     "fm.js",
+    "fm.d.ts",
     "audio.js",
     "audio.d.ts"
   ],
+  "types": "fm.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -37,5 +39,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-fm"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

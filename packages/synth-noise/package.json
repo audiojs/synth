@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-noise",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Colors of noise — white, pink (Kellet), brown, blue, violet; seeded, slope-verified",
   "type": "module",
   "sideEffects": false,
@@ -44,5 +44,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-noise"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

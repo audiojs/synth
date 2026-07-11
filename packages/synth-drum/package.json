@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-drum",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Drum synthesis — membrane kick, metal cymbal, noise snare (Tone.js class)",
   "type": "module",
   "sideEffects": false,
@@ -15,9 +15,11 @@
   },
   "files": [
     "drum.js",
+    "drum.d.ts",
     "audio.js",
     "audio.d.ts"
   ],
+  "types": "drum.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -37,5 +39,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-drum"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-poly",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Polyphonic voice allocator — wrap any voice with N-voice polyphony",
   "type": "module",
   "sideEffects": false,
@@ -25,9 +25,11 @@
   },
   "files": [
     "poly.js",
+    "poly.d.ts",
     "audio.js",
     "audio.d.ts"
   ],
+  "types": "poly.d.ts",
   "publishConfig": {
     "access": "public"
   },
@@ -40,5 +42,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-poly"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-lfo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "LFO — low-frequency control signal, bipolar/unipolar",
   "type": "module",
   "sideEffects": false,
@@ -10,8 +10,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lfo.js"
+    "lfo.js",
+    "lfo.d.ts"
   ],
+  "types": "lfo.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -30,5 +32,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-lfo"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

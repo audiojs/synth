@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-dtmf",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DTMF dial tones — ITU-T Q.23 row/column pairs per digit",
   "type": "module",
   "sideEffects": false,
@@ -10,8 +10,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dtmf.js"
+    "dtmf.js",
+    "dtmf.d.ts"
   ],
+  "types": "dtmf.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -30,5 +32,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-dtmf"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

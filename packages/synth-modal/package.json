@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-modal",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Modal synthesis — two-pole resonator bank (string/bar/membrane/plate/tube), impulse or noise excited",
   "type": "module",
   "sideEffects": false,
@@ -15,9 +15,11 @@
   },
   "files": [
     "modal.js",
+    "modal.d.ts",
     "audio.js",
     "audio.d.ts"
   ],
+  "types": "modal.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -37,5 +39,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-modal"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }

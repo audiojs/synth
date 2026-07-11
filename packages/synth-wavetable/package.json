@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-wavetable",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Morphing wavetable oscillator — scan a bank of single-cycle tables (WaveEdit class)",
   "type": "module",
   "sideEffects": false,
@@ -10,8 +10,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "wavetable.js"
+    "wavetable.js",
+    "wavetable.d.ts"
   ],
+  "types": "wavetable.d.ts",
   "keywords": [
     "audio",
     "dsp",
@@ -30,5 +32,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",
     "directory": "packages/synth-wavetable"
-  }
+  },
+  "funding": "https://github.com/sponsors/audiojs"
 }
