@@ -1,5 +1,7 @@
 # @audio/synth
 
+Try it in the browser: [Room and speaker measurement](https://audiojs.dev/util/measure/). Runs on this package, nothing is uploaded.
+
 > Synthesis & signal generators — test tones, noise colors, classic synthesis atoms.
 
 **Generator contract** (family convention): every *pitched* generator is `(freq, opts) → Float32Array` — `osc`, `pluck`, `voice`, `risset`, `lfo`, `wavetable`, `fm` (+ `bell`, `epiano`), `modal`, `membrane`, `metal`. Unpitched generators take a single opts-or-scalar form: `noise(duration, opts)`, `chirp(opts)`, `rhythm(opts)`, `adsr(opts)`, `sfx(preset | opts)`, `dtmf(digits, opts)`. Durations are **seconds**; sample rate is `fs` (default 44100); output is mono `Float32Array`. `poly(notes, { voice, voiceOpts })` hosts any pitched generator as a voice — per-voice config (fm's `ratio`/`index`, modal's `model`, wavetable's `tables`) rides in via `voiceOpts`.
