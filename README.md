@@ -25,7 +25,7 @@ Try it in the browser: [Room and speaker measurement](https://audiojs.dev/util/m
 | `@audio/synth-sfx` | ✔ | ZZFX-class parameterized SFX, 8 deterministic presets |
 | `@audio/synth-wavetable` | ✔ | wavetable oscillator with table morphing (`tables` required) |
 
-**audio.js manifests**: 13/16 atoms ship one (hostable by [`audio`](https://github.com/audiojs/audio) / [`@audio/wam`](https://github.com/audiojs/wam)). Exempt with reasons: `synth-dtmf` (symbolic digit-string input has no params representation), `synth-lfo` (modulation source, not an audio-rate processor for hosts), `synth-wavetable` (`tables` is an asset argument — arrays have no params representation; use the kernel directly).
+**audio.js manifests**: 13/16 atoms ship one (hostable by [`audio`](https://github.com/audiojs/audio) / [`@audio/compile-wam`](https://github.com/audiojs/compile/tree/main/packages/compile-wam)). Exempt with reasons: `synth-dtmf` (symbolic digit-string input has no params representation), `synth-lfo` (modulation source, not an audio-rate processor for hosts), `synth-wavetable` (`tables` is an asset argument — arrays have no params representation; use the kernel directly).
 
 Parity targets: Audacity generators, Tone.js synthesis primitives. `pink-noise` extracted from audio-filter; musical test synths also live in `beat/synth.js` + `beat/floatbeats.js` (future `floatbeats` fixtures package).
 
