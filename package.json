@@ -3,14 +3,18 @@
   "version": "1.2.2",
   "type": "module",
   "sideEffects": false,
-  "description": "Synthesis & signal generators \u2014 umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
+  "description": "Synthesis & signal generators — umbrella for @audio/synth-* atoms (noise colors, oscillator, chirp, DTMF, pluck, risset drum, rhythm track, envelope, LFO)",
   "main": "index.js",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "*.d.ts"
   ],
   "workspaces": [
     "packages/*"
@@ -62,5 +66,6 @@
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git"
   },
-  "funding": "https://github.com/sponsors/audiojs"
+  "funding": "https://github.com/sponsors/audiojs",
+  "types": "./index.d.ts"
 }
