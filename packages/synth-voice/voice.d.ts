@@ -15,6 +15,8 @@ export interface VoiceOptions {
   /** seconds, default 0.25 */
   release?: number
   /** lowpass cutoff at full envelope, Hz, default 3000 */
+  fc?: number
+  /** @deprecated former name of `fc` */
   cutoff?: number
   /** 0..1, how much the envelope scales the cutoff, default 0.6 */
   envAmount?: number

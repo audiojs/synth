@@ -21,6 +21,8 @@ export interface VoiceOptions {
   /** 0.001..4 s (default 0.25) */
   "release"?: Auto
   /** 100..16000 Hz (default 3000) */
+  "fc"?: Auto
+  /** @deprecated former name of "fc" */
   "cutoff"?: Auto
   /** 0..1 (default 0.6) */
   "envAmount"?: Auto
@@ -46,7 +48,7 @@ export declare const voice: {
     /** 0.001..4 s (default 0.25) */
     "release": { type: "number", default: 0.25 }
     /** 100..16000 Hz (default 3000) */
-    "cutoff": { type: "number", default: 3000 }
+    "fc": { type: "number", default: 3000, alias: "cutoff" }
     /** 0..1 (default 0.6) */
     "envAmount": { type: "number", default: 0.6 }
     /** 0..1 (default 0.7) */

@@ -423,3 +423,20 @@ test('noise — duration in seconds (family convention)', () => {
 	is(white(1, { fs: 1000 }).length, 1000)
 	is(pinkNoise.name, 'pinkNoise', 'pink-noise filter still exported from package root')
 })
+
+test('voice manifest — renders its note events (every name it uses is imported)', async () => {
+	// The audio.js manifest once called midiToHz without importing it: a ReferenceError on the first note.
+	let { voice: manifest } = await import('./packages/synth-voice/audio.js')
+	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, type: 'note', kind: 'on', pitch: 69, velocity: 1, id: 0 }, { time: 4410, type: 'note', kind: 'off', pitch: 69, id: 0 }] })
+	let out = [[new Float32Array(8820)]]
+	proc([], out, { type: 'sawtooth', attack: [.01], decay: [.1], sustain: [.7], release: [.1], fc: [2000], envAmount: [.5], amp: [.5] })
+	let peak = 0
+	for (let v of out[0][0]) peak = Math.max(peak, Math.abs(v))
+	ok(peak > .1 && out[0][0].every(Number.isFinite), `A4 renders (peak ${peak.toFixed(3)})`)
+})
+
+test('voice — former option name `cutoff` still works as `fc`', () => {
+	let a = voice(220, { fc: 1500, duration: 0.1 }), b = voice(220, { cutoff: 1500, duration: 0.1 }), c = voice(220, { duration: 0.1 })
+	ok(a.every((v, i) => v === b[i]), '{ cutoff } ≡ { fc }')
+	ok(a.some((v, i) => v !== c[i]), 'fc changes the sound')
+})

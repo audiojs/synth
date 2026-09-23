@@ -6,6 +6,7 @@
 // @audio/synth-poly for allocation).
 
 import voiceFn from './voice.js'
+import { midiToHz } from '@audio/note'
 
 export const voice = (ctx) => {
 	return (inputs, outputs, params) => {
@@ -25,7 +26,7 @@ export const voice = (ctx) => {
 				type: params.type,
 				attack: params.attack[0], decay: params.decay[0],
 				sustain: params.sustain[0], release: params.release[0],
-				cutoff: params.cutoff[0], envAmount: params.envAmount[0],
+				fc: params.fc[0], envAmount: params.envAmount[0],
 				amp: params.amp[0] * (slot.velocity ?? 1),
 			})
 			for (let i = 0; i < d.length && slot.time + i < n; i++) o0[slot.time + i] += d[i]
@@ -48,7 +49,7 @@ voice.params = {
 	decay:     { type: 'number', min: 0.001, max: 2, default: 0.15, unit: 's', curve: 'log' },
 	sustain:   { type: 'number', min: 0, max: 1, default: 0.6 },
 	release:   { type: 'number', min: 0.001, max: 4, default: 0.25, unit: 's', curve: 'log' },
-	cutoff:    { type: 'number', min: 100, max: 16000, default: 3000, unit: 'Hz', curve: 'log' },
+	fc:        { type: 'number', min: 100, max: 16000, default: 3000, unit: 'Hz', curve: 'log', alias: 'cutoff' },
 	envAmount: { type: 'number', min: 0, max: 1, default: 0.6 },
 	amp:       { type: 'number', min: 0, max: 1, default: 0.7 },
 }

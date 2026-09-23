@@ -13,7 +13,7 @@ import voice from '@audio/synth-voice'
 Composed voice — [`synth-osc`](https://github.com/audiojs/synth/tree/main/packages/synth-osc) through a one-pole lowpass whose cutoff is scaled by an [`synth-envelope`](https://github.com/audiojs/synth/tree/main/packages/synth-envelope) ADSR, the Tone.js Synth/MonoSynth class. Pitched — `(freq, opts)`.
 
 ```js
-voice(440, { type: 'sawtooth', cutoff: 3000, envAmount: 0.6 })   // → Float32Array
+voice(440, { type: 'sawtooth', fc: 3000, envAmount: 0.6 })       // → Float32Array
 ```
 
 | Param | Default | |
@@ -23,7 +23,7 @@ voice(440, { type: 'sawtooth', cutoff: 3000, envAmount: 0.6 })   // → Float32A
 | `type` | `'sawtooth'` | Oscillator waveform — see `synth-osc` |
 | `duration` | `0.6` | Note-on length, seconds |
 | `attack` / `decay` / `sustain` / `release` | `0.01` / `0.15` / `0.6` / `0.25` | ADSR, seconds/level |
-| `cutoff` | `3000` | Lowpass cutoff at full envelope, Hz |
+| `fc` | `3000` | Lowpass cutoff at full envelope, Hz (`cutoff` still accepted) |
 | `envAmount` | `0.6` | 0..1 — how much the envelope scales the cutoff |
 | `amp` | `0.7` | Peak amplitude |
 
