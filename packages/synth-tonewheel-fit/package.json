@@ -1,0 +1,49 @@
+{
+  "name": "@audio/synth-tonewheel-fit",
+  "version": "0.1.0",
+  "description": "Tonewheel registration from audio: sustained organ note or chord → nine drawbars 0..8, percussion guess, score (NNLS against the tonewheel model)",
+  "type": "module",
+  "sideEffects": false,
+  "main": "fit.js",
+  "exports": {
+    ".": {
+      "types": "./fit.d.ts",
+      "default": "./fit.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "fit.js",
+    "fit.d.ts"
+  ],
+  "types": "fit.d.ts",
+  "dependencies": {
+    "@audio/synth-tonewheel": "^0.1.0",
+    "fourier-transform": "^2.4.0"
+  },
+  "keywords": [
+    "audio",
+    "dsp",
+    "organ",
+    "tonewheel",
+    "hammond",
+    "drawbar",
+    "registration",
+    "fit",
+    "nnls"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/synth.git",
+    "directory": "packages/synth-tonewheel-fit"
+  },
+  "funding": "https://github.com/sponsors/audiojs"
+}

@@ -1,4 +1,4 @@
-/** Classic waveform oscillator (periodic-function), with detune + phase offset. */
+/** Classic waveform oscillator, band-limited, with detune + phase offset. */
 export interface OscOptions {
   /** seconds, default 1 */
   duration?: number
@@ -12,9 +12,12 @@ export interface OscOptions {
   detune?: number
   /** starting phase 0..1, default 0 */
   phase?: number
-  /** custom waveform fn, overrides type */
+  /** custom waveform fn, overrides type (rendered as given, not band-limited) */
   wave?: (t: number) => number
 }
 
 /** freq: Hz (positional) */
 export default function osc(freq: number, options?: OscOptions): Float32Array
+
+/** One sample of a band-limited waveform at phase t ∈ [0, 1) advancing dt = f/fs per sample (BLEP / BLAMP). */
+export function wave(type: 'sine' | 'square' | 'sawtooth' | 'triangle', t: number, dt: number): number

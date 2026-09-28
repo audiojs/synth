@@ -1,0 +1,9 @@
+@audio/synth-dx7
+Copyright 2026 Dmitry Iv. and audiojs contributors
+
+This product includes a JavaScript translation of the FM engine of
+Music Synthesizer for Android (https://github.com/google/music-synthesizer-for-android),
+by Raph Levien, Copyright 2012-2013 Google Inc., licensed under the Apache License,
+Version 2.0. Translated files: app/src/main/jni/{sin,exp2,freqlut,env,pitchenv,lfo,
+fm_op_kernel,fm_core,dx7note,patch}.cc at commit f67d41d. The changes are listed in the
+header of dx7.js and sysex.js.

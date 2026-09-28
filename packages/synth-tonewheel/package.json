@@ -1,0 +1,50 @@
+{
+  "name": "@audio/synth-tonewheel",
+  "version": "0.1.0",
+  "description": "Tonewheel organ (Hammond B-3 upper manual): 91 geared tonewheels, nine drawbars, foldback, single-trigger percussion, key click, vibrato/chorus scanner",
+  "type": "module",
+  "sideEffects": false,
+  "main": "tonewheel.js",
+  "exports": {
+    ".": {
+      "types": "./tonewheel.d.ts",
+      "default": "./tonewheel.js"
+    },
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "tonewheel.js",
+    "tonewheel.d.ts",
+    "audio.js",
+    "audio.d.ts"
+  ],
+  "types": "tonewheel.d.ts",
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "organ",
+    "tonewheel",
+    "hammond",
+    "drawbar"
+  ],
+  "license": "MIT",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "audio": "./audio.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/synth.git",
+    "directory": "packages/synth-tonewheel"
+  },
+  "funding": "https://github.com/sponsors/audiojs"
+}

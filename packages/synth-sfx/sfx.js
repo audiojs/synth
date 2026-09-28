@@ -3,6 +3,8 @@
 // noise/bitcrush/lowpass. Named presets cover the sfxr archetypes; every field is
 // overridable, deterministic (seeded noise) so renders are reproducible.
 
+import { wave } from '@audio/synth-osc'
+
 let { sin, PI, abs, exp, sign } = Math
 
 export const PRESETS = {
@@ -49,12 +51,14 @@ export default function sfx (preset = 'blip', opts = {}) {
 		if (arp && t > arpAt) f *= arp ** Math.min(2, Math.floor(t / arpAt))
 		if (vib) f *= 1 + vibDepth * sin(2 * PI * vib * t)
 
-		phase += f / fs
+		// band-limited (synth-osc): the rising saw and the triangle rising from −1 are its falling ones negated
+		let dt = f / fs
+		phase += dt
 		let ph = phase % 1
 		let s = shape === 'sine' ? sin(2 * PI * ph)
-			: shape === 'square' ? (ph < 0.5 ? 1 : -1) * 0.7
-			: shape === 'saw' ? (2 * ph - 1) * 0.8
-			: shape === 'triangle' ? (ph < 0.5 ? 4 * ph - 1 : 3 - 4 * ph)
+			: shape === 'square' ? wave('square', ph, dt) * 0.7
+			: shape === 'saw' ? -wave('sawtooth', ph, dt) * 0.8
+			: shape === 'triangle' ? -wave('triangle', ph, dt)
 			: noise()
 
 		// envelope: linear attack, flat sustain, exponential release

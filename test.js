@@ -98,6 +98,47 @@ test('osc — pitch correct; square odd-dominant, saw has 2nd harmonic', () => {
 	almost(zcFreq(osc(440, { type: 'sine', duration: 0.5, detune: 100 }), 2205, 19845), 466.16, 4, 'detune +100¢ → A#4')
 })
 
+// Spectrum of a steady tone: 2^16-point 4-term Blackman-Harris (sidelobes −92 dB). → the strongest component off
+// the harmonic series below 16 kHz and each harmonic's level, dB re the fundamental's peak.
+function lines (x, f0, fs) {
+	let N = 1 << 16, w = new Float64Array(N)
+	for (let i = 0; i < N; i++) { let a = 2 * Math.PI * i / N; w[i] = x[i] * (0.35875 - 0.48829 * Math.cos(a) + 0.14128 * Math.cos(2 * a) - 0.01168 * Math.cos(3 * a)) }
+	let [re, im] = fft(w), P = k => re[k] * re[k] + im[k] * im[k], bin = fs / N, zone = new Uint8Array(N / 2)
+	for (let h = 1; h * f0 < fs / 2; h++) for (let d = -8; d <= 8; d++) zone[Math.round(h * f0 / bin) + d] = 1
+	// a harmonic's power: its main lobe's (±4 bins), free of the window's scalloping
+	let peak = h => { let k = Math.round(h * f0 / bin), m = 0; for (let d = -4; d <= 4; d++) m += P(k + d); return m }
+	let p1 = peak(1), off = 0
+	for (let k = Math.ceil(20 / bin); k < 16000 / bin; k++) if (!zone[k]) off = Math.max(off, P(k))
+	return { alias: 10 * Math.log10(off / p1), level: h => 10 * Math.log10(peak(h) / p1) }
+}
+
+test('osc — band-limited: no aliases below 16 kHz, harmonics at their ideal levels', () => {
+	// naive, a 3520 Hz saw at 44.1 kHz aliases at −18 dB; the 64-tap BLEP leaves the analysis floor
+	for (let fs of [44100, 48000]) for (let type of ['sawtooth', 'square', 'triangle']) for (let f of [110, 1760, 3520, 7040]) {
+		let { alias } = lines(osc(f, { type, fs, duration: 1.6, amp: 1 }), f, fs)
+		ok(alias < -90, `${type} ${f} Hz @ ${fs}: aliases ${alias.toFixed(0)} dB`)
+	}
+	// ideal band-limited levels: saw 1/h, square 1/h odd, triangle 1/h² odd (Fourier series), to 16 kHz
+	let saw = lines(osc(440, { type: 'sawtooth', duration: 1.6, amp: 1 }), 440, 44100)
+	for (let h of [2, 3, 10, 36]) almost(saw.level(h), -20 * Math.log10(h), 0.05, `saw h${h}`)
+	let tri = lines(osc(440, { type: 'triangle', duration: 1.6, amp: 1 }), 440, 44100)
+	for (let h of [3, 5, 35]) almost(tri.level(h), -40 * Math.log10(h), 0.05, `triangle h${h}`)
+	// phase conventions kept: saw falls, square starts high, triangle falls from its peak
+	let s = osc(100, { type: 'sawtooth', duration: 0.02, amp: 1 }), q = osc(100, { type: 'square', duration: 0.02, amp: 1 }), t = osc(100, { type: 'triangle', duration: 0.02, amp: 1 })
+	ok(s[100] > s[200] && Math.abs(s[110] - 0.5) < 0.01, 'saw falls, 1 − 2t')
+	ok(q[100] > 0.99 && q[300] < -0.99, 'square high on the first half')
+	ok(Math.abs(t[110] - 0) < 0.01 && t[50] > t[100], 'triangle falls from 1 at t = 0')
+})
+
+test('osc atom — band-limited as osc(), in any block size', async () => {
+	let { osc: atom } = await import('@audio/synth-osc/audio')
+	let p = atom({ sampleRate: 44100 }), n = 1 << 16, x = new Float32Array(n + 1000), prm = { freq: [3520], detune: [0], gain: [1], type: 'square' }
+	for (let i = 0, b = 1; i < x.length; i += b, b = 1 + (b * 7) % 300) p([], [[x.subarray(i, Math.min(x.length, i + b))]], prm)
+	ok(lines(x, 3520, 44100).alias < -90, 'no aliases')
+	let o = osc(3520, { type: 'square', duration: x.length / 44100, amp: 1 })
+	ok(x.every((v, i) => Math.abs(v - o[i]) < 1e-6), 'same samples as osc()')
+})
+
 import { dtmf, pluck, risset, rhythm, adsr, lfo, wavetable, membrane, voice } from './index.js'
 
 test('dtmf — digit 5 carries 770 + 1336 Hz, not 697/1209', () => {
@@ -150,7 +191,8 @@ test('wavetable — pos 0 plays table A, pos 1 plays table B', () => {
 test('voice — enveloped, filtered, pitched, finite', () => {
 	let v = voice(220, {})
 	ok(v.every(isFinite))
-	ok(v[v.length - 1] === 0 || Math.abs(v[v.length - 1]) < 0.02, 'released')
+	// the release ends at 0.03 of full scale (synth-envelope), times 0.7 and the wave's peak (1.09 band-limited)
+	ok(v[v.length - 1] === 0 || Math.abs(v[v.length - 1]) < 0.025, 'released')
 	let c = 0
 	for (let i = 2206; i < 15435; i++) if ((v[i - 1] < 0) !== (v[i] < 0)) c++
 	almost(c / 2 * 44100 / 13229, 220, 12, 'pitch-ish through filter')
@@ -215,6 +257,14 @@ test('sfx — laser slides down, pickup arpeggiates up', () => {
 	ok(zc(l, 0, 2000) > zc(l, l.length - 3000, l.length - 1000) * 1.3, 'laser pitch falls')
 	let p = sfx('pickup', { fs: 44100 })
 	ok(zc(p, p.length - 4000, p.length - 2000) > zc(p, 0, 2000) * 1.2, 'pickup steps up')
+})
+
+test('sfx — band-limited square and saw', () => {
+	for (let shape of ['square', 'saw']) {
+		let x = sfx({ freq: 3520, shape, attack: 0.001, sustain: 2, release: 0.01 })
+		let { alias } = lines(x.subarray(441), 3520, 44100)
+		ok(alias < -90, `${shape}: aliases ${alias.toFixed(0)} dB`)
+	}
 })
 
 test('sfx — unknown preset throws, object preset works', () => {
@@ -439,4 +489,334 @@ test('voice — former option name `cutoff` still works as `fc`', () => {
 	let a = voice(220, { fc: 1500, duration: 0.1 }), b = voice(220, { cutoff: 1500, duration: 0.1 }), c = voice(220, { duration: 0.1 })
 	ok(a.every((v, i) => v === b[i]), '{ cutoff } ≡ { fc }')
 	ok(a.some((v, i) => v !== c[i]), 'fc changes the sound')
+})
+
+// --- DX7 FM engine (synth-dx7): the Music Synthesizer for Android core, diffed against upstream ---
+
+import { throws } from 'tst'
+import { dx7, parseDx7, tonewheel, fitTonewheel } from './index.js'
+import { render as dx7Render, unpack as dx7Unpack, INIT as DX7_INIT } from '@audio/synth-dx7'
+import { reference as msfa, MSFA } from './test/msfa.js'
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+const ref = msfa() // null without the upstream checkout, a C++ compiler or x86-64 execution: those tests skip
+const ROM1A = join(MSFA, 'app/src/main/res/raw/rom1a.syx') // Yamaha's factory voices as bundled by MSFA; not redistributed here
+
+// VCED parameter maxima (DX7 Operating Manual, MIDI data format), for random valid voices
+const DX7_OP = [99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 3, 3, 7, 3, 7, 99, 1, 31, 99, 14]
+const DX7_GLOBAL = [99, 99, 99, 99, 99, 99, 99, 99, 31, 7, 1, 99, 99, 99, 99, 1, 5, 7, 48]
+const lcg = (seed) => (n) => { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) % (n + 1) }
+function dx7Random (rnd) {
+	let p = new Uint8Array(155)
+	for (let op = 0; op < 6; op++) DX7_OP.forEach((m, i) => p[op * 21 + i] = rnd(m))
+	DX7_GLOBAL.forEach((m, i) => p[126 + i] = rnd(m))
+	return p
+}
+// VMEM packing per the DX7 manual's layout, the inverse of unpack
+function dx7Pack (p) {
+	let b = new Uint8Array(128)
+	for (let op = 0; op < 6; op++) {
+		let o = op * 21, k = op * 17
+		for (let i = 0; i < 11; i++) b[k + i] = p[o + i]
+		b[k + 11] = p[o + 11] | p[o + 12] << 2
+		b[k + 12] = p[o + 13] | p[o + 20] << 3
+		b[k + 13] = p[o + 14] | p[o + 15] << 2
+		b[k + 14] = p[o + 16]
+		b[k + 15] = p[o + 17] | p[o + 18] << 1
+		b[k + 16] = p[o + 19]
+	}
+	for (let i = 0; i < 9; i++) b[102 + i] = p[126 + i]
+	b[111] = p[135] | p[136] << 3
+	for (let i = 0; i < 4; i++) b[112 + i] = p[137 + i]
+	b[116] = p[141] | p[142] << 1 | p[143] << 4
+	for (let i = 0; i < 11; i++) b[117 + i] = p[144 + i]
+	return b
+}
+// the same voice, note, velocity and length in both engines: count differing int32 samples
+function dx7Diff (patch, { note = 60, velocity = 100, fs = 44100, duration = 0.3, release = 0.2, msfa = true } = {}) {
+	let a = dx7Render(patch, { note, velocity, fs, duration, release, msfa })
+	let b = ref.note(patch, { note, velocity, fs, blocks: a.length / 64, keyup: Math.round(duration * fs / 64) })
+	let d = 0, peak = 0
+	for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) d++; peak = Math.max(peak, Math.abs(b[i])) }
+	return { d, n: a.length, peak }
+}
+const peakOf = (d) => d.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
+
+test('dx7: INIT voice: a sine at the key; OP1 at level 99 peaks at 2^25 of the 2^28 full scale', () => {
+	let d = dx7(440, { duration: 0.5, release: 0.2 })
+	is(d.length, Math.round(0.7 * 44100))
+	almost(peakOf(d), 0.125, 1e-4, `peak ${peakOf(d).toFixed(5)}`)
+	almost(zcFreq(d, 2205, 19845), 440, 1, 'pitch')
+})
+
+test('dx7: parse: cartridge (VMEM), single voice (VCED) and headerless data give the same voices', () => {
+	let rnd = lcg(3), voices = Array.from({ length: 32 }, () => dx7Random(rnd))
+	voices.forEach((v, i) => v.set([...`VOICE ${String(i).padStart(2)}  `].map(c => c.charCodeAt(0)), 145))
+	let bulk = new Uint8Array(4096)
+	voices.forEach((v, i) => bulk.set(dx7Pack(v), i * 128))
+	let sum = bulk.reduce((a, b) => a + b, 0)
+	let bank = parseDx7(Uint8Array.from([0xf0, 0x43, 0x00, 0x09, 0x20, 0x00, ...bulk, (128 - sum % 128) % 128, 0xf7]))
+	is(bank.length, 32)
+	ok(bank.every((b, i) => b.patch.every((x, k) => x === voices[i][k])), 'VMEM unpacks to the packed voices')
+	is(bank[7].name, 'VOICE  7')
+	ok(parseDx7(Uint8Array.from([0xf0, 0x43, 0x00, 0x00, 0x01, 0x1b, ...voices[5], 0, 0xf7]))[0].patch.every((x, k) => x === voices[5][k]), 'VCED')
+	ok(parseDx7(bulk).length === 32 && parseDx7(voices[5])[0].patch.every((x, k) => x === voices[5][k]), 'headerless 4096 and 155 bytes')
+	let bad = Uint8Array.from(voices[0]); bad[134] = 40; bad[0] = 120
+	let c = parseDx7(bad)[0].patch
+	ok(c[134] === 31 && c[0] === 99, 'out-of-range values clamp to the documented maxima')
+})
+
+test('dx7: parse: a 16-bit byte count (10 00) reads as 4096; messages other than voices are skipped', () => {
+	let rnd = lcg(5), voices = Array.from({ length: 32 }, () => dx7Random(rnd))
+	let bulk = new Uint8Array(4096)
+	voices.forEach((v, i) => bulk.set(dx7Pack(v), i * 128))
+	let vmem = count => [0xf0, 0x43, 0x00, 0x09, ...count, ...bulk, 0, 0xf7]
+	let same = bank => bank.length === 32 && bank.every((b, i) => b.patch.every((x, k) => k >= 145 || x === voices[i][k]))
+	ok(same(parseDx7(Uint8Array.from(vmem([0x10, 0x00])))), '10 00: the byte count as a plain 16-bit 4096')
+	ok(same(parseDx7(Uint8Array.from(vmem([0x20, 0x00])))), '20 00: the 7-bit count the manual gives')
+	// a Yamaha message of another format (7E, universal bulk dump) and a Roland GS reset
+	let perf = [0xf0, 0x43, 0x00, 0x7e, 0x00, 0x0e, ...[...'LM  8952PM'].map(c => c.charCodeAt(0)), 1, 2, 3, 4, 0, 0xf7]
+	let roland = [0xf0, 0x41, 0x10, 0x42, 0x12, 0x40, 0x00, 0x7f, 0x00, 0x41, 0xf7]
+	ok(same(parseDx7(Uint8Array.from([...perf, ...vmem([0x20, 0x00]), ...roland]))), 'the voices between the other two')
+	is(parseDx7(Uint8Array.from([...perf, 0xf0, 0x43, 0x00, 0x00, 0x01, 0x1b, ...voices[5], 0, 0xf7])).length, 1, 'a single voice after a performance')
+	throws(() => parseDx7(Uint8Array.from(perf)), /no voices found \(unsupported sysex format 126/)
+	throws(() => parseDx7(Uint8Array.from(roland)), /no voices found \(not a Yamaha sysex message\)/)
+	// a parameter change (F0 43 1n: group 0, parameter 1, value 1B) that reads like a VCED header must not swallow the bank
+	let change = [0xf0, 0x43, 0x10, 0x00, 0x01, 0x1b, 0xf7]
+	ok(same(parseDx7(Uint8Array.from([...change, ...vmem([0x20, 0x00])]))), 'the bank after a parameter change')
+	throws(() => parseDx7(Uint8Array.from(change)), /no voices found \(a parameter change, not a bulk dump\)/)
+	throws(() => parseDx7(Uint8Array.from(vmem([0x20, 0x00]).slice(0, 1000))), /truncated/)
+	throws(() => parseDx7(Uint8Array.from([...vmem([0x20, 0x00]), 0xf0, 0x43])), /truncated/, 'a dangling header at the end')
+})
+
+test('dx7: amplitude EG on the DX7 clock at any fs: 0.2819·2^(q/4)·(1 + (q mod 4)/4) dB/s (MSFA wiki Dx7Envelope)', () => {
+	let p = Uint8Array.from(DX7_INIT)
+	p.set([99, 50, 99, 99, 99, 0, 0, 0], 5 * 21) // OP1 rates, levels: instant attack, then rate 50 down to 0
+	let q = (50 * 41) >> 6, want = 0.2819 * 2 ** (q >> 2) * (1 + (q & 3) / 4) // 72.17 dB/s
+	const slope = (fs, msfa) => {
+		let d = dx7Render(p, { note: 69, velocity: 100, fs, duration: 1.5, release: 0.1, msfa }), pts = []
+		for (let i = 0; i + 1024 <= d.length; i += 1024) {
+			let m = 0
+			for (let j = i; j < i + 1024; j++) m = Math.max(m, Math.abs(d[j]))
+			let db = 20 * Math.log10(m / 2 ** 25)
+			if (db < -10 && db > -50) pts.push([(i + 512) / fs, db])
+		}
+		let n = pts.length, st = 0, sd = 0, stt = 0, std = 0
+		for (let [t, db] of pts) { st += t; sd += db; stt += t * t; std += t * db }
+		return (n * std - st * sd) / (n * stt - st * st)
+	}
+	for (let fs of [44100, 48000, 96000]) {
+		almost(slope(fs, false), -want, want * 0.01, `${fs} Hz: ${slope(fs, false).toFixed(2)} dB/s, documented ${want.toFixed(2)}`)
+		almost(slope(fs, true), -want * fs / 49096, want * 0.01, `msfa: × ${fs}/49096, upstream counts DX7 samples`)
+	}
+})
+
+test('dx7: transpose shifts the key as on the DX7; velocity sensitivity scales the level; release runs to silence', () => {
+	let up = Uint8Array.from(DX7_INIT); up[144] = 36 // transpose C4: one octave up
+	almost(zcFreq(dx7(220, { patch: up, duration: 0.5, release: 0 }), 2205, 19845), 440, 1, 'A3 key sounds A4')
+	let kvs = Uint8Array.from(DX7_INIT); kvs[5 * 21 + 15] = 7
+	let loud = peakOf(dx7(440, { patch: kvs, velocity: 1, duration: 0.3, release: 0 }))
+	let soft = peakOf(dx7(440, { patch: kvs, velocity: 0.4, duration: 0.3, release: 0 }))
+	ok(loud > 2 * soft, `KVS 7, velocity 1 vs 0.4: ${(20 * Math.log10(loud / soft)).toFixed(1)} dB`)
+	let rel = dx7(440, { duration: 0.3 })
+	ok(rel.length < 0.4 * 44100 && rel[rel.length - 1] === 0, `release ends silent ${(rel.length / 44100 - 0.3).toFixed(3)} s after key-up`)
+})
+
+test('dx7: bit-exact with upstream MSFA: 32 algorithms × feedback 0..7', { skip: !ref, timeout: 120000 }, () => {
+	for (let alg = 0; alg < 32; alg++) {
+		let p = Uint8Array.from(DX7_INIT)
+		for (let op = 0; op < 6; op++) p.set([99, 60 + 5 * op, 40, 70, 99, 90 - 7 * op, 70, 0, 39, 0, 0, 0, 0, 0, 0, 0, 72 + 5 * op, 0, op + 1, 7 * op, 6 + op % 3], op * 21)
+		p[134] = alg; p[135] = alg % 8
+		let r = dx7Diff(p, { note: 48 + alg % 24 })
+		ok(!r.d && r.peak > 1 << 20, `algorithm ${alg + 1}, feedback ${alg % 8}: ${r.d} of ${r.n} samples differ`)
+	}
+})
+
+test('dx7: bit-exact with upstream MSFA: random voices (EGs, level and rate scaling, velocity, pitch EG, LFO, unpack)', { skip: !ref, timeout: 120000 }, () => {
+	let rnd = lcg(7)
+	for (let i = 0; i < 24; i++) {
+		let p = dx7Random(rnd), fs = [44100, 48000, 49096][i % 3], note = 24 + rnd(84), velocity = 1 + rnd(126)
+		// at 49096 Hz the DX7-clock EG and upstream's per-sample EG coincide: the default path is diffed there
+		let r = dx7Diff(p, { note, velocity, fs, msfa: fs !== 49096 })
+		let bulk = dx7Pack(p), mine = dx7Unpack(bulk)
+		ok(!r.d && ref.unpack(bulk).every((x, k) => x === mine[k]), `voice ${i}: algorithm ${p[134] + 1}, note ${note}, velocity ${velocity}, ${fs} Hz${fs === 49096 ? ' (DX7 clock)' : ''}: ${r.d} of ${r.n} differ`)
+	}
+})
+
+test('dx7: bit-exact with upstream MSFA: fixed-frequency operators with detune, 6 LFO waves × sync × delay', { skip: !ref, timeout: 120000 }, () => {
+	let rnd = lcg(11)
+	for (let wave = 0; wave < 6; wave++) for (let sync = 0; sync < 2; sync++) {
+		let p = dx7Random(rnd)
+		p.set([20 + rnd(79), sync ? rnd(99) : 0, 50 + rnd(49), 0, sync, wave, 4 + rnd(3)], 137) // speed, delay, PMD, AMD, sync, wave, PMS
+		for (let op = 1; op < 6; op += 2) { p[op * 21 + 17] = 1; p[op * 21 + 20] = rnd(14) } // fixed frequency, detune
+		let r = dx7Diff(p, { note: 36 + rnd(48), velocity: 1 + rnd(126), duration: 0.8, release: 0.3 })
+		ok(!r.d, `LFO wave ${wave}, sync ${sync}, delay ${p[138]}, PMD ${p[139]}, PMS ${p[143]}: ${r.d} of ${r.n} differ`)
+	}
+})
+
+test('dx7: bit-exact with upstream MSFA: the ROM1A cartridge bundled with MSFA', { skip: !ref || !existsSync(ROM1A), timeout: 120000 }, () => {
+	let bank = parseDx7(readFileSync(ROM1A))
+	is(bank[10].name, 'E.PIANO 1')
+	bank.forEach(({ name, patch }, i) => {
+		let r = dx7Diff(patch, { note: 48 + i % 3 * 12, velocity: 64 + i, duration: 0.5, release: 0.5 })
+		ok(!r.d, `${name}: ${r.d} of ${r.n} differ`)
+	})
+})
+
+test('dx7: real-time factor per voice, CPU time', { timeout: 60000 }, () => {
+	let p = dx7Random(lcg(5)), c0 = process.cpuUsage()
+	for (let i = 0; i < 4; i++) dx7Render(p, { note: 60, duration: 2.5, release: 2.5 })
+	let c = process.cpuUsage(c0), rtf = (c.user + c.system) / 1e6 / 20
+	ok(rtf < 0.05, `RTF ${rtf.toExponential(2)}: ${(1 / rtf).toFixed(0)}× real time`)
+})
+
+// --- tonewheel organ (synth-tonewheel) and registration fit (synth-tonewheel-fit) ---
+
+import { wheel, wheelHz, TAPS, PERCUSSION } from '@audio/synth-tonewheel'
+const rotary = (await import('@audio/effect-rotary').catch(() => null))?.default
+const freeverb = (await import('@audio/reverb-freeverb').catch(() => null))?.default
+
+test('tonewheel: wheel frequencies from the gear ratios: A 440; +1.98/−0.71 cents from equal temperament; tierce 14 cents sharp', () => {
+	is(wheelHz(46), 440)
+	almost(wheelHz(1), 20 * 85 / 104 * 2, 1e-9, 'wheel 1: 20 rev/s · 85/104 · 2 teeth')
+	almost(wheelHz(86), 4440, 1e-9, 'C# on the F# shaft: 20 · 37/32 · 192 teeth (HammondWiki)')
+	let cents = Array.from({ length: 91 }, (_, i) => 1200 * Math.log2(wheelHz(i + 1) / (440 * 2 ** ((i - 45) / 12))))
+	almost(Math.max(...cents), 1.98, 0.01, 'sharpest: top C#')
+	almost(Math.min(...cents), -0.71, 0.01, 'flattest: G# (48/37)')
+	let f8 = wheelHz(wheel(60, 2))
+	almost(1200 * Math.log2(wheelHz(wheel(60, 6)) / (5 * f8)), 13.87, 0.05, "C4: 1 3/5' against 5 × 8'")
+	almost(1200 * Math.log2(wheelHz(wheel(60, 4)) / (3 * f8)), -1.36, 0.05, "C4: 2 2/3' against 3 × 8'")
+})
+
+test('tonewheel: keys to wheels with foldback: rows of Table III, Hammond service manual', () => {
+	const row = (midi) => Array.from({ length: 9 }, (_, d) => wheel(midi, d))
+	is(row(36), [13, 20, 13, 25, 32, 37, 41, 44, 49], "key 1: the bottom octave's 16' repeats its 8'")
+	is(row(48), [13, 32, 25, 37, 44, 49, 53, 56, 61], 'key 13')
+	is(row(79), [44, 63, 56, 68, 75, 80, 84, 87, 80], "key 44: 1' folds back past wheel 91")
+	is(row(96), [61, 80, 73, 85, 80, 85, 89, 80, 85], 'key 61')
+	throws(() => wheel(35, 2), /manual/)
+})
+
+test('tonewheel: drawbar positions on the matching-transformer taps, 6..64 turns (US 1,956,350)', () => {
+	let f = wheelHz(46), full = dftMag(tonewheel(440, { drawbars: '008000000', duration: 0.5 }), f, 44100)
+	for (let n = 1; n < 8; n++) {
+		let a = dftMag(tonewheel(440, { drawbars: `00${n}000000`, duration: 0.5 }), f, 44100)
+		almost(a / full, TAPS[n] / 64, 1e-9, `position ${n}: ${(20 * Math.log10(a / full)).toFixed(2)} dB`)
+	}
+})
+
+test("tonewheel: keys sharing a tonewheel add coherently: C4's 4' is C5's 8'", () => {
+	let f = wheelHz(49)
+	let one = dftMag(tonewheel(523.25, { drawbars: '008000000', duration: 0.5 }), f, 44100)
+	let two = dftMag(tonewheel([261.63, 523.25], { drawbars: '008800000', duration: 0.5 }), f, 44100)
+	almost(two / one, 2, 1e-3, `amplitude × ${(two / one).toFixed(5)} on the shared wheel`)
+})
+
+test("tonewheel: percussion: single trigger, 1' silenced, −60 dB in 1 s (fast) and 4 s (slow)", () => {
+	let fs = 44100, f4 = wheelHz(wheel(69, 3))
+	const at = (x, t, f) => dftMag(x.subarray(Math.round(t * fs), Math.round(t * fs) + 2048), f, fs)
+	let pulled = tonewheel(440, { drawbars: '000000008', percussion: 'second', duration: 0.5 }), pushed = tonewheel(440, { drawbars: '000000000', percussion: 'second', duration: 0.5 })
+	ok(pulled.every((v, i) => v === pushed[i]), "1' drawbar silent while the percussion keys through its contacts")
+	for (let decay of ['fast', 'slow']) {
+		let x = tonewheel(440, { drawbars: '000000000', percussion: 'second', percussionDecay: decay, duration: 1.2 })
+		let db = 20 * Math.log10(at(x, 0.6, f4) / at(x, 0.1, f4)) / 0.5
+		almost(db, -60 / PERCUSSION.t60[decay], 0.5, `${decay}: ${db.toFixed(1)} dB/s`)
+	}
+	let key = (time, midi) => ({ time, midi, duration: 0.45 })
+	let legato = tonewheel([{ time: 0, midi: 69, duration: 1 }, { time: 0.5, midi: 72, duration: 0.5 }], { drawbars: '008000000', percussion: 'second', percussionDecay: 'slow' })
+	let detached = tonewheel([key(0, 69), key(0.5, 72)], { drawbars: '008000000', percussion: 'second', percussionDecay: 'slow' })
+	let c5 = wheelHz(wheel(72, 3))
+	ok(at(detached, 0.51, c5) > 1.5 * at(legato, 0.51, c5), 'a key pressed while another is held does not retrigger')
+})
+
+test('tonewheel: scanner V1/V2/V3 swing pitch ±0.5/0.75/1.5% at 412 rpm (Hammond service manual)', () => {
+	for (let [v, dev] of [['v1', 0.5], ['v2', 0.75], ['v3', 1.5]]) {
+		let x = tonewheel(440, { drawbars: '008000000', duration: 2, vibrato: v }), zc = [], fr = []
+		for (let i = 4410; i < 83790; i++) if (x[i - 1] < 0 && x[i] >= 0) zc.push(i - x[i] / (x[i] - x[i - 1]))
+		for (let i = 1; i < zc.length; i++) fr.push(44100 / (zc[i] - zc[i - 1]))
+		almost(Math.max(...fr) / 440 - 1, dev / 100, 2e-4, `${v}: +${(100 * (Math.max(...fr) / 440 - 1)).toFixed(3)}%`)
+		almost(1 - Math.min(...fr) / 440, dev / 100, 2e-4, `${v}: −${(100 * (1 - Math.min(...fr) / 440)).toFixed(3)}%`)
+	}
+})
+
+test('tonewheel manifest: note events play the drawbar params', async () => {
+	let { tonewheel: manifest } = await import('./packages/synth-tonewheel/audio.js')
+	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, type: 'note', kind: 'on', pitch: 69, velocity: 1, id: 0 }, { time: 22050, type: 'note', kind: 'off', pitch: 69, id: 0 }] })
+	let out = [[new Float32Array(44100)]], params = Object.fromEntries(Object.entries(manifest.params).map(([k, p]) => [k, p.type === 'number' ? [p.default] : p.default]))
+	proc([], out, params)
+	let d = out[0][0]
+	almost(dftMag(d.subarray(0, 22050), 440, 44100) / 11025, 0.8 / 9, 1e-3, "888000000: the 8' wheel at 0.8/9")
+	ok(peakOf(d.subarray(22100)) === 0, 'silent after key-up')
+})
+
+test('tonewheel-fit: 888000000 comes back as itself, dry', () => {
+	let r = fitTonewheel(tonewheel(261.63, { drawbars: '888000000' }), { freq: 261.63 })
+	is(r.drawbars, '888000000')
+	almost(r.score, 1, 1e-3, `score ${r.score.toFixed(4)}`)
+	ok(r.percussion === null && r.vibrato === null, 'no percussion, no scanner')
+})
+
+// random registrations on keys C3..C5 (no foldback); canonical up to gain: loudest drawbar at 8
+function randomRegistrations (n, seed, canonical = true) {
+	let rnd = lcg(seed)
+	return Array.from({ length: n }, () => {
+		let r = Array.from({ length: 9 }, () => rnd(8))
+		if (canonical || r.every(v => !v)) r[rnd(8)] = 8
+		return { drawbars: r.join(''), freq: 440 * 2 ** ((48 + rnd(24) - 69) / 12) }
+	})
+}
+
+test('tonewheel-fit: exact recovery of random registrations, dry and through every scanner setting (detected)', { timeout: 180000 }, () => {
+	for (let vib of [false, 'v1', 'v2', 'v3', 'c1', 'c2', 'c3']) {
+		let regs = randomRegistrations(10, 7), hits = 0, found = 0
+		for (let { drawbars, freq } of regs) {
+			let r = fitTonewheel(tonewheel(freq, { drawbars, duration: 1.5, vibrato: vib }), { freq })
+			if (r.drawbars === drawbars) hits++
+			if (r.vibrato === (vib || null)) found++
+		}
+		is(hits, regs.length, `${vib || 'dry'}: ${hits}/${regs.length} exact, setting found ${found}/${regs.length}`)
+	}
+	let regs = randomRegistrations(10, 8, false), hits = 0
+	for (let { drawbars, freq } of regs) if (fitTonewheel(tonewheel(freq, { drawbars, duration: 1.5, amp: 0.5 }), { freq, amp: 0.5 }).drawbars === drawbars) hits++
+	is(hits, regs.length, `known gain, any registration: ${hits}/${regs.length} exact`)
+})
+
+test('tonewheel-fit: percussion: harmonic, decay and volume', { timeout: 120000 }, () => {
+	let regs = randomRegistrations(8, 9), i = 0
+	for (let harmonic of ['second', 'third']) for (let decay of ['fast', 'slow']) for (let volume of ['normal', 'soft']) {
+		let { freq } = regs[i], drawbars = regs[i++].drawbars.slice(0, 8) + '0' // percussion silences 1'
+		if (!drawbars.includes('8')) drawbars = '8' + drawbars.slice(1)
+		let r = fitTonewheel(tonewheel(freq, { drawbars, duration: 2, percussion: harmonic, percussionDecay: decay, percussionVolume: volume }), { freq })
+		is([r.drawbars, r.percussion], [drawbars, { harmonic, decay, volume }], `${harmonic} ${decay} ${volume}`)
+	}
+})
+
+test('tonewheel-fit: chords, and the key of a single note when no pitch is given', { timeout: 120000 }, () => {
+	let rnd = lcg(12)
+	for (let { drawbars, freq } of randomRegistrations(6, 13)) {
+		let chord = [0, 4, 7].map(s => freq * 2 ** (s / 12))
+		is(fitTonewheel(tonewheel(chord, { drawbars, duration: 1.5 }), { freq: chord }).drawbars, drawbars, `major triad ${drawbars}`)
+	}
+	for (let { drawbars } of randomRegistrations(6, 14)) {
+		let reg = '0' + drawbars[1] + '8' + drawbars.slice(3), key = 40 + rnd(40) // 8' sounding, 16' off: the key is the pitch heard
+		let r = fitTonewheel(tonewheel(440 * 2 ** ((key - 69) / 12), { drawbars: reg, duration: 1.5 }))
+		ok(r.keys[0] === key && r.drawbars === reg, `key ${key} ${reg} → ${r.keys[0]} ${r.drawbars}`)
+	}
+	is(fitTonewheel(tonewheel(261.63, { drawbars: '888000000' })).drawbars, '008880000', "no pitch: 16' heard as the fundamental, key C3")
+})
+
+test('tonewheel-fit: through a Leslie (@audio/effect-rotary, two mics) and reverb (@audio/reverb-freeverb)', { skip: !rotary || !freeverb, timeout: 180000 }, () => {
+	let fs = 44100
+	const leslie = (speed) => (x) => { let L = Float64Array.from(x), R = Float64Array.from(x); rotary(L, R, { speed, fs }); return [L, R] }
+	const room = (x) => freeverb(Float32Array.from(x), { fs })
+	for (let [name, fx, floor] of [['Leslie chorale', leslie('chorale'), 0.9], ['Leslie tremolo', leslie('tremolo'), 0.9], ['reverb', room, 0.8]]) {
+		let regs = randomRegistrations(16, 21), exact = 0, near = 0
+		for (let { drawbars, freq } of regs) {
+			let r = fitTonewheel(fx(tonewheel(freq, { drawbars, duration: 1.5 })), { freq })
+			if (r.drawbars === drawbars) exact++
+			if ([...r.drawbars].every((d, k) => Math.abs(d - drawbars[k]) <= 1)) near++
+		}
+		ok(near >= floor * regs.length, `${name}: ${exact}/${regs.length} exact, ${near}/${regs.length} within ±1 per drawbar`)
+	}
 })

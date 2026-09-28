@@ -1,0 +1,50 @@
+{
+  "name": "@audio/synth-dx7",
+  "version": "0.1.0",
+  "description": "Yamaha DX7 FM engine: a bit-exact JavaScript port of the Music Synthesizer for Android core (6 operators, 32 algorithms, DX7 envelopes, LFO, pitch EG), with DX7 sysex loading",
+  "type": "module",
+  "sideEffects": false,
+  "main": "dx7.js",
+  "exports": {
+    ".": {
+      "types": "./dx7.d.ts",
+      "default": "./dx7.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dx7.js",
+    "sysex.js",
+    "dx7.d.ts",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "types": "dx7.d.ts",
+  "keywords": [
+    "audio",
+    "dsp",
+    "synth",
+    "fm",
+    "dx7",
+    "yamaha",
+    "msfa",
+    "sysex"
+  ],
+  "license": "Apache-2.0",
+  "author": "Dmitry Iv. <dfcreative@gmail.com>",
+  "contributors": [
+    "Raph Levien (Music Synthesizer for Android, Copyright 2012-2013 Google Inc.)"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/audiojs/synth.git",
+    "directory": "packages/synth-dx7"
+  },
+  "funding": "https://github.com/sponsors/audiojs"
+}

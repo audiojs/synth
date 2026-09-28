@@ -1,8 +1,6 @@
-// atom manifest — oscillator as a generator: no input bus, phase in closure.
+// atom manifest — oscillator as a generator: no input bus, phase in closure, band-limited (blep.js).
 
-import { sine, square, sawtooth, triangle } from 'periodic-function'
-
-const WAVES = { sine, square, sawtooth, triangle }
+import { wave } from './blep.js'
 
 export const osc = (ctx) => {
 	let t = 0
@@ -11,12 +9,13 @@ export const osc = (ctx) => {
 		if (!out || !out.length) return
 		const f = params.freq[0] * 2 ** (params.detune[0] / 1200)
 		const dt = f / ctx.sampleRate
-		const fn = WAVES[params.type]
+		const type = params.type
 		const g = params.gain[0]
 		const o0 = out[0]
 		for (let i = 0; i < o0.length; i++) {
-			o0[i] = g * fn(t % 1)
+			o0[i] = g * wave(type, t, dt)
 			t += dt
+			t -= Math.floor(t)
 		}
 		for (let c = 1; c < out.length; c++) out[c].set(o0)
 	}

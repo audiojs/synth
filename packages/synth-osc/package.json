@@ -1,7 +1,7 @@
 {
   "name": "@audio/synth-osc",
-  "version": "1.0.4",
-  "description": "Oscillator — sine/square/sawtooth/triangle with detune (wraps periodic-function)",
+  "version": "1.1.0",
+  "description": "Oscillator — band-limited sine/square/sawtooth/triangle with detune",
   "type": "module",
   "sideEffects": false,
   "main": "osc.js",
@@ -15,14 +15,12 @@
   },
   "files": [
     "osc.js",
+    "blep.js",
     "osc.d.ts",
     "audio.js",
     "audio.d.ts"
   ],
   "types": "osc.d.ts",
-  "dependencies": {
-    "periodic-function": "^2.1.0"
-  },
   "keywords": [
     "audio",
     "dsp",
