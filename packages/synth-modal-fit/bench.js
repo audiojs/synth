@@ -52,7 +52,7 @@ const [part = 'all', count = 10] = process.argv.slice(2)
 
 // --- shared ---
 
-const lcg = (seed) => () => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32
+const lcg = (seed) => () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32 // imul: exact mod 2³²
 const logu = (rnd, a, b) => a * (b / a) ** rnd()
 const quant = (v, q) => { if (!v.length) return NaN; let s = [...v].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(q * s.length))] }
 const median = (v) => quant(v, 0.5)
