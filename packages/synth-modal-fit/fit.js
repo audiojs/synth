@@ -1,48 +1,59 @@
 // Modal snapshot from audio: the inverse of @audio/synth-modal. One strike → { freq, amp, modes:
 // [{ ratio, gain, t60 }] }, synth-modal's own options, so modal(s.freq, s) plays it back.
 //
-// A strike is a sum of exponentially decaying sinusoids, one per mode. Their poles are found band
-// by band, their amplitudes all at once:
-// 1. Onset: the first sample within 20 dB of the strike's peak opens the analysis segment.
-// 2. Subbands: the segment's spectrum is cut into overlapping bands, each extracted through the
-//    DFT of a Kaiser-windowed lowpass (Kaiser 1974) and decimated to complex baseband. Convolving
-//    with a finite kernel keeps every pole: past the kernel's half length after the onset and
-//    before the end, a band is exactly a sum of the same damped exponentials, fewer of them.
-// 3. Poles: the matrix pencil (Hua & Sarkar 1990) on each band, its order the eigenvalues of the
-//    Hankel matrix standing above the band's noise. It resolves modes closer than an FFT bin as
-//    long as the strike lasts long enough to tell them apart (Laroche 1993). A band keeps only
-//    the poles inside its own central part; the neighbours own the rest.
-// 4. Amplitudes: linear least squares of the whole segment on every pole at once, the Gram matrix
-//    in closed form (geometric sums), so overlapping modes share energy correctly.
-// 5. Strike instant and sign: synth-modal starts every mode in sine phase, r^n·sin((n+1)θ), at the
-//    same sample. The instant near the onset that brings the modes closest to that phase is the
-//    strike; each mode's gain takes the sign of its phase there and its envelope is read there.
+// A struck object rings as a sum of exponentially decaying sinusoids, one per mode, all starting
+// at the strike. Their poles are found band by band, their amplitudes all at once:
+// 1. Onset: the first sample within 20 dB of the peak opens the analysis.
+// 2. Noise: minimum statistics (Martin 2001), each bin's median power over 93 ms frames, the
+//    lower fifth of those across a band and its neighbours; a Blackman–Harris window (Harris
+//    1978) keeps a ringing mode's own leakage 92 dB under it.
+// 3. Subbands: the strike's spectrum is cut into overlapping bands (200 Hz up to 2 kHz, a tenth
+//    of the frequency above), each taken through the DFT of a Kaiser-windowed lowpass (Kaiser
+//    1974) to complex baseband and decimated. Convolution with a finite kernel keeps every pole:
+//    from the kernel's half length on, a band is exactly a sum of the same damped exponentials.
+// 4. Poles: the matrix pencil (Hua & Sarkar 1990) on each band from the end of the excitation
+//    (5 ms), its order the Hankel eigenvalues standing above the band's noise. It resolves modes
+//    closer than an FFT bin while the strike lasts long enough to tell them apart (Laroche 1993).
+//    A band keeps the poles of its central part; a mode on an edge, seen by both neighbours, keeps
+//    the more central estimate.
+// 5. Amplitudes: least squares on every pole at once, the Gram matrix in closed form (geometric
+//    sums), so overlapping modes share energy correctly. A pole that carries no energy after the
+//    excitation only fitted the excitation, and is dropped; the rest are fitted from the onset.
+// 6. Strike instant and signs: synth-modal starts every mode in sine phase, r^n·sin((n+1)θ), at one
+//    sample, and a gain's sign is the only phase it has. The instant within 1 ms of the onset
+//    that brings the modes closest to sine phase is the strike; the signs then minimize the
+//    squared error to the strike (coordinate descent over ±1).
 //
-// References: J. F. Kaiser, "Nonrecursive digital filter design using the I0-sinh window
-// function", Proc. IEEE ISCAS 1974; Y. Hua, T. K. Sarkar, "Matrix pencil method for estimating
-// parameters of exponentially damped/undamped sinusoids in noise", IEEE Trans. ASSP 38(5), 1990;
-// J. Laroche, "The use of the matrix pencil method for the spectrum analysis of musical signals",
-// JASA 94(4), 1993; J. H. Wilkinson, The Algebraic Eigenvalue Problem, 1965 (shifted QR);
-// JAMA (NIST/MathWorks, public domain): tred2/tql2 for the symmetric eigenproblem.
+// References: R. Martin, "Noise power spectral density estimation based on optimal smoothing and
+// minimum statistics", IEEE Trans. Speech Audio Proc. 9(5), 2001; F. J. Harris, "On the use of
+// windows for harmonic analysis with the discrete Fourier transform", Proc. IEEE 66(1), 1978;
+// J. F. Kaiser, "Nonrecursive digital filter design using the I0-sinh window function", Proc.
+// IEEE ISCAS 1974; Y. Hua, T. K. Sarkar, "Matrix pencil method for estimating parameters of
+// exponentially damped/undamped sinusoids in noise", IEEE Trans. ASSP 38(5), 1990; J. Laroche,
+// "The use of the matrix pencil method for the spectrum analysis of musical signals", JASA 94(4),
+// 1993; J. H. Wilkinson, The Algebraic Eigenvalue Problem, 1965 (shifted QR); JAMA (NIST and
+// MathWorks, public domain): tred2/tql2 for the symmetric eigenproblem.
 
 import { cfft, cifft } from 'fourier-transform'
 
 const LN1000 = Math.log(1000) // t60: the envelope falls to 1/1000 (−60 dB), as in synth-modal
-const ONSET = 0.1 // the segment opens at the first sample within −20 dB of the peak
+const ONSET = 0.1 // the analysis opens at the first sample within −20 dB of the peak
 const FMIN = 20 // Hz, lowest band edge
-const DMIN = 100, Q = 10 // band width: 100 Hz up to 1 kHz, then a tenth of the frequency
-const ATT = 80 // dB, kernel stopband
+const DMIN = 200, Q = 10 // band width: 200 Hz up to 2 kHz, then a tenth of the frequency
+const ATT = 60 // dB, kernel stopband: leakage from outside a band stays under it
 const LSHORT = 24, LMAX = 64 // pencil lengths
-const NOISE = 2 // a component must stand twice above the band's largest noise eigenvalue
+const NOISE = 2 // a component stands twice above the band's largest noise eigenvalue
 const RELTOL = 1e-10 // and within 100 dB of the band's strongest
 const TMAX = 100 // s, t60 of a pole the strike shows no decay for
-const STRIKE = 0.001 // s, strike instant searched within ±1 ms of the onset
+const STRIKE = 0.001 // s, the strike instant is searched within ±1 ms of the onset
+const ATTACK = 0.005 // s, the excitation (a mallet's contact, a clash): modes are told apart after it
 
 /**
- * @param {Float32Array|Float64Array|ArrayLike<number>[]} data: one strike, mono or channels (mixed)
+ * @param {Float32Array|Float64Array|ArrayLike<number>|ArrayLike<number>[]} data: one strike, from
+ *   shortly before its onset to before the next; mono, or channels (mixed)
  * @param {object} opts: { fs = 44100, freq: Hz of ratio 1 (default: the mode carrying the most
- *   energy), nmodes: keep at most this many modes, strongest by energy (default all),
- *   floor: drop modes this many dB of energy below the strike (default −80) }
+ *   energy), nmodes: keep at most this many modes, strongest by energy (default all), floor: drop
+ *   modes whose energy after the excitation falls this many dB under the strike's (default −80) }
  * @returns {{ freq: number, amp: number, modes: { ratio: number, gain: number, t60: number }[] }}
  */
 export default function fit (data, { fs = 44100, freq = null, nmodes = Infinity, floor = -80 } = {}) {
@@ -54,36 +65,30 @@ export default function fit (data, { fs = 44100, freq = null, nmodes = Infinity,
 	let s = x.subarray(t0), N = s.length
 	if (N < 0.02 * fs) throw new RangeError('modal-fit: need at least 20 ms after the onset')
 
-	let poles = dedup(bandPoles(s, fs), N)
-	let { amps, energy } = amplitudes(s, poles)
-	let total = energy.reduce((a, b) => a + b, 0)
-	let keep = poles.map((p, k) => k).filter(k => energy[k] >= total * 10 ** (floor / 10))
-	keep.sort((a, b) => energy[b] - energy[a])
-	keep = keep.slice(0, nmodes)
-	if (keep.length < poles.length) {
-		poles = keep.map(k => poles[k]);
-		({ amps, energy } = amplitudes(s, poles))
-	}
+	let { Nfft, bands } = layout(N, fs), g0 = Math.min(Math.round(ATTACK * fs), N >> 2)
+	let found = dedup(bandPoles(spectrum(s, Nfft), noise(s, bands, fs), N, fs, Nfft, bands, g0), N)
+	let { poles, amps } = solve(s, found, floor, nmodes, g0)
 	if (!poles.length) throw new RangeError('modal-fit: no modes found')
 
-	// strike instant τ (samples from the segment start): each mode Re(C e^{p n}) should read
-	// g·e^{−α(n−τ)}·sin((n−τ+1)ω), i.e. C·e^{pτ}·i·e^{−iω} real; weights fixed at |C|²
+	// strike instant τ, samples from the onset: mode Re(C·e^{pn}) reads g·e^{−α(n−τ)}·sin((n−τ+1)ω)
+	// when C·e^{pτ}·i·e^{−iω} is real; τ maximizes Σ|C|²·cos² of that phase (ties, as a harmonic
+	// series repeats every period: the nearest to the onset)
 	let w = amps.map(([re, im]) => re * re + im * im), half = Math.round(STRIKE * fs), tau = 0, best = -1
 	const phase = (k, t) => Math.atan2(amps[k][1], amps[k][0]) + poles[k].w * t + Math.PI / 2 - poles[k].w
 	for (let i = -20 * half; i <= 20 * half; i++) {
 		let t = i / 20, J = 0
 		for (let k = 0; k < poles.length; k++) J += w[k] * Math.cos(phase(k, t)) ** 2
-		if (J > best + 1e-12 * best) { best = J; tau = t } // ties (a harmonic series repeats every period): the nearest
+		if (J > best + 1e-12 * best) { best = J; tau = t }
 		else if (J > best - 1e-12 * best && Math.abs(t) < Math.abs(tau)) tau = t
 	}
-	let g = poles.map((p, k) => Math.sign(Math.cos(phase(k, tau)) || 1) * Math.sqrt(w[k]) * Math.exp(-p.a * tau))
+	let g = signs(s, poles, poles.map((p, k) => Math.sign(Math.cos(phase(k, tau)) || 1) * Math.sqrt(w[k]) * Math.exp(-p.a * tau)), tau)
 
-	let ref = energy.indexOf(Math.max(...energy)), unit = Math.abs(g[ref])
-	let f = (k) => poles[k].w * fs / (2 * Math.PI)
-	let f1 = freq ?? f(ref)
-	let modes = poles.map((p, k) => ({ ratio: f(k) / f1, gain: g[k] / unit, t60: p.a > 0 ? Math.min(TMAX, LN1000 / (p.a * fs)) : TMAX }))
-		.sort((a, b) => a.ratio - b.ratio)
-	return { freq: f1, amp: g.reduce((a, v) => a + Math.abs(v), 0), modes }
+	// ratio 1 and gain 1: the mode with the most energy; amp = Σ|amplitude|, which synth-modal
+	// divides back out of gains summing past 1, so each mode rings at its measured amplitude
+	let energy = poles.map((p, k) => w[k] / 2 * geo(-2 * p.a, 0, N)[0]), ref = energy.indexOf(Math.max(...energy))
+	let hz = (k) => poles[k].w * fs / (2 * Math.PI), f1 = freq ?? hz(ref), unit = Math.abs(g[ref])
+	let modes = poles.map((p, k) => ({ ratio: hz(k) / f1, gain: g[k] / unit, t60: p.a > 0 ? Math.min(TMAX, LN1000 / (p.a * fs)) : TMAX }))
+	return { freq: f1, amp: g.reduce((a, v) => a + Math.abs(v), 0), modes: modes.sort((a, b) => a.ratio - b.ratio) }
 }
 
 function mono (data) {
@@ -125,50 +130,121 @@ function kernel (fc, T, fs, Nfft, K) {
 	return k
 }
 
-// poles of every band, as log-poles per sample { a: decay rate α, w: frequency ω } (e^{(−α+iω)n})
-function bandPoles (s, fs) {
-	let N = s.length, top = 0.98 * fs / 2
-	let edges = [FMIN]
+// Signs. Each mode plays g·e^{−α(n−τ)}·sin((n−τ+1)ω) = Re(−i·e^{iω(1−τ)+ατ}·g·e^{pn}); with the
+// magnitudes |g| fixed, flip the sign of whichever mode lowers the squared error to s most, until
+// none does (coordinate descent on a quadratic in ±1; the Gram in closed form). Starts from the
+// signs of each mode's own phase, which stand where the modes do not overlap.
+function signs (s, poles, g, tau) {
+	let N = s.length, K = poles.length, m = g.map(Math.abs), sg = g.map(Math.sign)
+	let beta = poles.map(({ a, w }) => [Math.exp(a * tau) * Math.sin(w * (1 - tau)), -Math.exp(a * tau) * Math.cos(w * (1 - tau))]) // −i·e^{iω(1−τ)+ατ}
+	let G = Array.from({ length: K }, () => new Float64Array(K)), b = new Float64Array(K)
+	for (let j = 0; j < K; j++) for (let k = j; k < K; k++) {
+		let [ar, ai] = beta[j], [br, bi] = beta[k], pj = poles[j], pk = poles[k]
+		let [sr, si] = geo(-pj.a - pk.a, pj.w + pk.w, N), [tr, ti] = geo(-pj.a - pk.a, pj.w - pk.w, N)
+		let abr = ar * br - ai * bi, abi = ar * bi + ai * br, acr = ar * br + ai * bi, aci = ai * br - ar * bi // a·b, a·b̄
+		G[j][k] = G[k][j] = ((abr * sr - abi * si) + (acr * tr - aci * ti)) / 2 // ⟨Re(a e^{pn}), Re(b e^{qn})⟩
+	}
+	for (let k = 0; k < K; k++) {
+		let { a, w } = poles[k], [br, bi] = beta[k], cr = 0, ci = 0, er = Math.exp(-a) * Math.cos(w), ei = Math.exp(-a) * Math.sin(w), ur = 1, ui = 0
+		for (let n = 0; n < N; n++) {
+			if (!(n & 1023)) { let e = Math.exp(-a * n); ur = e * Math.cos(w * n); ui = e * Math.sin(w * n) }
+			cr += s[n] * ur; ci += s[n] * ui
+			let t = ur * er - ui * ei; ui = ur * ei + ui * er; ur = t
+		}
+		b[k] = br * cr - bi * ci // ⟨s, Re(β e^{pn})⟩ = Re(β·Σ s e^{pn})
+	}
+	let r = b.map((v, k) => v - sg.reduce((a, sj, j) => a + (j === k ? 0 : sj * m[j] * G[k][j]), 0)) // b − Σ_{j≠k} s_j m_j G_kj
+	for (let it = 0; it < 4 * K; it++) {
+		let best = -1, gain = 0
+		for (let k = 0; k < K; k++) { let d = 4 * sg[k] * m[k] * r[k]; if (d < gain) { gain = d; best = k } } // ΔJ of flipping k
+		if (best < 0) break
+		sg[best] = -sg[best]
+		for (let k = 0; k < K; k++) if (k !== best) r[k] -= 2 * sg[best] * m[best] * G[k][best]
+	}
+	return g.map((_, k) => sg[k] * m[k])
+}
+
+// Amplitudes. Which poles are modes is read after the excitation (g0 on): a pole that only
+// helps fit the excitation (a burst, a clash) carries no energy there and falls under the floor,
+// as do those past nmodes. The amplitudes of the rest are then fitted from the onset, the attack
+// included.
+function solve (s, poles, floor, nmodes, g0) {
+	let { energy } = amplitudes(s.subarray(g0), poles), total = energy.reduce((a, b) => a + b, 0)
+	poles = poles.map((p, k) => k).filter(k => energy[k] >= total * 10 ** (floor / 10)).sort((a, b) => energy[b] - energy[a]).slice(0, nmodes).map(k => poles[k])
+	return { poles, amps: amplitudes(s, poles).amps }
+}
+
+// noise power per bin of the strike's whole spectrum, per band. Minimum statistics (Martin
+// 2001): each bin's median power over 93 ms frames (a mode rings through them, the clash does
+// not), then the lower fifth of those over the band and a band-width either side (the bins
+// between modes), each corrected to the mean of an exponential variable. The 4-term
+// Blackman–Harris window (Harris 1978) keeps a ringing mode's leakage 92 dB down outside its own
+// ±4 bins, under any noise the bins between modes could show.
+const FRAME = 4096, BH = [0.35875, 0.48829, 0.14128, 0.01168]
+function noise (s, bands, fs) {
+	let N = s.length, F = Math.min(FRAME, 2 ** Math.floor(Math.log2(N / 2))), w = new Float64Array(F), w2 = 0, frames = []
+	for (let i = 0; i < F; i++) { let x = 2 * Math.PI * i / F; w[i] = BH[0] - BH[1] * Math.cos(x) + BH[2] * Math.cos(2 * x) - BH[3] * Math.cos(3 * x); w2 += w[i] * w[i] }
+	for (let p = 0; p + F <= N; p += F / 4) {
+		let re = new Float64Array(F), im = new Float64Array(F)
+		for (let i = 0; i < F; i++) re[i] = s[p + i] * w[i]
+		cfft(re, im)
+		frames.push(re.subarray(0, F / 2 + 1).map((v, k) => v * v + im[k] * im[k]))
+	}
+	let med = new Float64Array(F / 2 + 1), col = new Float64Array(frames.length)
+	for (let k = 0; k <= F / 2; k++) { frames.forEach((f, t) => col[t] = f[k]); col.sort(); med[k] = col[col.length >> 1] / Math.LN2 }
+	return bands.map(({ lo, hi }) => {
+		let d = hi - lo, v = Array.from(med.subarray(Math.max(1, Math.floor((lo - d) * F / fs)), Math.min(F / 2, Math.ceil((hi + d) * F / fs)) + 1)).sort((a, b) => a - b)
+		return v[Math.floor(0.2 * v.length)] / -Math.log(0.8) * N / w2 // a frame's power to the whole strike's
+	})
+}
+
+// bands: edges every DMIN Hz up to DMIN·Q, then a Q-th of the frequency; the FFT holds the
+// strike and the longest kernel
+function layout (N, fs) {
+	let top = 0.98 * fs / 2, edges = [FMIN]
 	while (edges[edges.length - 1] < top) { let b = edges[edges.length - 1]; edges.push(Math.min(top, b + Math.max(DMIN, b / Q))) }
 	let longest = Math.ceil((ATT - 8) / (2.285 * 2 * Math.PI * DMIN / fs)) | 1
-	let Nfft = pow2(N + longest), re = new Float64Array(Nfft), im = new Float64Array(Nfft)
-	re.set(s); cfft(re, im)
-	const bin = (f) => f * Nfft / fs
+	return { Nfft: pow2(N + longest), bands: edges.slice(1).map((hi, i) => ({ lo: edges[i], hi })) }
+}
 
-	let bands = []
-	for (let i = 0; i + 1 < edges.length; i++) {
-		let lo = edges[i], hi = edges[i + 1], e = 0
-		for (let k = Math.ceil(bin(lo)); k < bin(hi); k++) e += re[k] * re[k] + im[k] * im[k]
-		bands.push({ lo, hi, e })
-	}
-	let emax = Math.max(...bands.map(b => b.e)), poles = []
-	for (let { lo, hi, e } of bands) {
-		if (e < 1e-10 * emax) continue // −100 dB: nothing a pencil could keep (RELTOL)
+function spectrum (x, Nfft) {
+	let re = new Float64Array(Nfft), im = new Float64Array(Nfft)
+	re.set(x); cfft(re, im)
+	return { re, im }
+}
+
+// poles of every band, as log-poles per sample { a: decay rate α, w: frequency ω } (e^{(−α+iω)n});
+// X the strike's spectrum, Pn each band's noise power per bin of it
+function bandPoles ({ re, im }, Pn, N, fs, Nfft, bands, g0) {
+	const bin = (f) => f * Nfft / fs
+	const energy = ({ lo, hi }) => { let e = 0; for (let k = Math.ceil(bin(lo)); k < bin(hi); k++) e += re[k] * re[k] + im[k] * im[k]; return e }
+	let emax = Math.max(...bands.map(energy)), poles = []
+	for (let [b, { lo, hi }] of bands.entries()) {
+		if (energy({ lo, hi }) < 1e-10 * emax) continue // −100 dB: nothing a pencil could keep (RELTOL)
 		let D0 = hi - lo, kc = Math.round(bin((lo + hi) / 2)), wc = 2 * Math.PI * kc / Nfft
 		let K = Math.ceil(bin(2 * D0)) + 2, M = pow2(2 * K + 1), D = Nfft / M
 		let { H, half } = kernel(1.5 * D0, D0, fs, Nfft, K)
-		let zr = new Float64Array(M), zi = new Float64Array(M), h2 = 0
+		let zr = new Float64Array(M), zi = new Float64Array(M)
 		for (let j = -K; j <= K; j++) {
 			let k = ((kc + j) % Nfft + Nfft) % Nfft, m = (j + M) % M, hj = H[Math.abs(j)]
-			zr[m] = re[k] * hj; zi[m] = im[k] * hj; h2 += hj * hj
+			zr[m] = re[k] * hj; zi[m] = im[k] * hj
 		}
 		cifft(zr, zi)
-		let m0 = Math.ceil(half / D), m1 = Math.floor((N - 1 - half) / D)
+		let m0 = Math.ceil((half + g0) / D), m1 = Math.floor((N - 1 - half) / D)
 		if (m1 - m0 + 1 < 12) continue
 
-		// noise: the lower fifth of the owned bins' power, an exponential variable's 20th
-		// percentile (−ln 0.8 of its mean); a band's z then carries noise of PSD peak
-		// Pn·Nfft/(N·M) per sample (Parseval through the kernel and the 1/M inverse)
-		let pw = []
-		for (let k = Math.ceil(bin(lo)); k < bin(hi); k++) pw.push(re[k] * re[k] + im[k] * im[k])
-		pw.sort((a, b) => a - b)
-		let Pn = pw.length ? pw[Math.floor(0.2 * pw.length)] / -Math.log(0.8) : 0
-		let sig2 = Pn * Nfft / (N * M)
+		// band noise in z: PSD peak Pn·Nfft/(N·M) per sample (Parseval through the kernel and the
+		// 1/M inverse FFT)
+		let sig2 = Pn[b] * Nfft / (N * M)
 
 		for (let l of pencil(zr, zi, m0, m1, sig2)) {
 			let a = -Math.log(Math.hypot(l[0], l[1])) / D, w = Math.atan2(l[1], l[0]) / D + wc
 			let f = w * fs / (2 * Math.PI)
-			if (f >= lo && f < hi && Number.isFinite(a)) poles.push({ a, w })
+			// in this band's own part, or just past it (a mode on an edge is seen from both sides; the
+			// more central estimate is kept); not faded 40 dB before the band's first clean sample
+			// (its amplitude would be extrapolated past what was seen); not growing
+			let c = Math.abs(f - (lo + hi) / 2) / (hi - lo) * 2
+			if (c <= 1.25 && f >= bands[0].lo && f < bands[bands.length - 1].hi && a * (half + g0) <= Math.log(100) && a > -LN1000 / (TMAX * fs)) poles.push({ a, w, c, b })
 		}
 	}
 	return poles
@@ -246,28 +322,29 @@ function pencil (zr, zi, m0, m1, sig2) {
 	return ceig(Zr, Zi, M)
 }
 
-// merge poles closer than the strike can resolve: |Δp|·N < 0.1
+// One mode, one pole. A mode near a band edge is seen by both bands: two estimates within half a
+// bin of the strike's length (|Δp|·N < π) are one, and the estimate from the band it sits more
+// centrally in is kept. And two poles whose exponentials correlate over 0.95 across the strike
+// (closer than a third of their half-power bandwidth) cannot be told apart: least squares gives
+// them large gains of opposite sign that cancel only when played in exactly this phase; one is
+// kept. A 1 Hz pair ringing 1 s correlates 0.91 and stays two.
+const RHO = 0.95
 function dedup (poles, N) {
-	poles.sort((p, q) => p.w - q.w)
-	let out = []
-	for (let p of poles) {
-		let q = out[out.length - 1]
-		if (q && Math.hypot(p.w - q.w, p.a - q.a) * N < 0.1) continue
-		out.push(p)
+	const corr = (p, q) => {
+		if (Math.abs(p.w - q.w) > 20 * (p.a + q.a) + 4 * Math.PI / N) return 0 // too far apart to matter
+		let [cr, ci] = geo(-p.a - q.a, p.w - q.w, N)
+		return Math.hypot(cr, ci) / Math.sqrt(geo(-2 * p.a, 0, N)[0] * geo(-2 * q.a, 0, N)[0])
 	}
-	return out
+	let out = []
+	for (let p of [...poles].sort((p, q) => p.c - q.c)) if (!out.some(q => (q.b !== p.b && Math.hypot(p.w - q.w, p.a - q.a) * N < Math.PI) || corr(p, q) > RHO)) out.push(p)
+	return out.map(({ a, w }) => ({ a, w }))
 }
 
 // least squares of s on e^{−αn}cos(ωn), e^{−αn}sin(ωn) for every pole; Gram entries are geometric
 // sums S(q) = Σ e^{qn} = expm1(Nq)/expm1(q). Returns C = a − ib per pole (mode = Re(C·e^{pn})) and
 // each mode's energy Σ|mode|² ≈ |C|²/2·Σe^{−2αn}.
 function amplitudes (s, poles) {
-	let N = s.length, K = poles.length, n2 = 2 * K
-	const S = (qr, qi) => { // complex Σ_{n<N} e^{(qr+iqi)n}
-		if (Math.hypot(qr, qi) < 1e-14) return [N, 0]
-		let [nr, ni] = cexpm1(N * qr, N * qi), [dr, di] = cexpm1(qr, qi), dd = dr * dr + di * di
-		return [(nr * dr + ni * di) / dd, (ni * dr - nr * di) / dd]
-	}
+	let N = s.length, K = poles.length, n2 = 2 * K, S = (qr, qi) => geo(qr, qi, N)
 	let G = Array.from({ length: n2 }, () => new Float64Array(n2))
 	for (let j = 0; j < K; j++) for (let k = j; k < K; k++) {
 		let pj = poles[j], pk = poles[k]
@@ -292,6 +369,13 @@ function amplitudes (s, poles) {
 	let amps = poles.map((_, k) => [x[2 * k], -x[2 * k + 1]])
 	let energy = poles.map((p, k) => (amps[k][0] ** 2 + amps[k][1] ** 2) / 2 * S(-2 * p.a, 0)[0])
 	return { amps, energy }
+}
+
+// complex Σ_{n<N} e^{(qr+iqi)n} = expm1(Nq)/expm1(q)
+function geo (qr, qi, N) {
+	if (Math.hypot(qr, qi) < 1e-14) return [N, 0]
+	let [nr, ni] = cexpm1(N * qr, N * qi), [dr, di] = cexpm1(qr, qi), dd = dr * dr + di * di
+	return [(nr * dr + ni * di) / dd, (ni * dr - nr * di) / dd]
 }
 
 function cexpm1 (a, b) {
@@ -357,7 +441,7 @@ function csolve (Ar, Ai, Br, Bi, M) {
 
 // eigenvalues of a complex M×M matrix (row-major): Householder to Hessenberg, then shifted QR
 // with Givens rotations and Wilkinson shifts (Wilkinson 1965)
-export function ceig (Ar, Ai, n) {
+function ceig (Ar, Ai, n) {
 	let Hr = Array.from({ length: n }, (_, i) => Float64Array.from(Ar.subarray(i * n, i * n + n)))
 	let Hi = Array.from({ length: n }, (_, i) => Float64Array.from(Ai.subarray(i * n, i * n + n)))
 	for (let k = 0; k + 2 < n; k++) {
@@ -434,7 +518,7 @@ export function ceig (Ar, Ai, n) {
 
 // symmetric eigenproblem: Householder tridiagonalization and QL with implicit shifts (JAMA's
 // tred2/tql2, after EISPACK). Returns ascending eigenvalues d and eigenvectors as columns of V.
-export function symeig (A) {
+function symeig (A) {
 	let n = A.length, V = A.map(r => Float64Array.from(r)), d = new Float64Array(n), e = new Float64Array(n)
 	for (let j = 0; j < n; j++) d[j] = V[n - 1][j]
 	for (let i = n - 1; i > 0; i--) {

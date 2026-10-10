@@ -820,3 +820,84 @@ test('tonewheel-fit: through a Leslie (@audio/effect-rotary, two mics) and rever
 		ok(near >= floor * regs.length, `${name}: ${exact}/${regs.length} exact, ${near}/${regs.length} within ±1 per drawbar`)
 	}
 })
+
+// --- modal snapshot from audio (synth-modal-fit): differential against synth-modal's own renders ---
+
+import { fitModal } from './index.js'
+
+// each mode as synth-modal plays it: Hz, amplitude amp·gain (gains divided by Σ|gain| past 1), t60
+const playedModes = ({ freq, amp = 0.8, modes }) => {
+	let sum = modes.reduce((a, m) => a + Math.abs(m.gain), 0), norm = sum > 1 ? sum : 1
+	return modes.map(m => ({ f: freq * m.ratio, A: amp * m.gain / norm, t60: m.t60 }))
+}
+// worst error of the fitted mode nearest each true one; the count of fitted modes
+function modalErrors (truth, snap) {
+	let got = playedModes(snap), e = { n: got.length, cents: 0, t60: 0, dB: 0, signs: true }
+	for (let t of truth) {
+		let g = got.reduce((b, m) => Math.abs(m.f - t.f) < Math.abs(b.f - t.f) ? m : b)
+		e.cents = Math.max(e.cents, Math.abs(1200 * Math.log2(g.f / t.f)))
+		e.t60 = Math.max(e.t60, Math.abs(g.t60 / t.t60 - 1))
+		e.dB = Math.max(e.dB, Math.abs(20 * Math.log10(g.A / t.A)))
+		e.signs &&= Math.sign(g.A) === Math.sign(t.A)
+	}
+	return e
+}
+const exact = (e, label) => ok(e.cents < 1e-3 && e.t60 < 1e-3 && e.dB < 0.01 && e.signs,
+	`${label}: ${e.n} modes, worst ${e.cents.toExponential(1)} cents, t60 ${(100 * e.t60).toExponential(1)}%, ${e.dB.toExponential(1)} dB, signs ${e.signs}`)
+
+test('modal-fit: custom modes come back from their render: frequency, t60, amplitude, sign', () => {
+	let modes = [{ ratio: 1, gain: 1, t60: 1.5 }, { ratio: 2.71, gain: 0.5, t60: 0.6 }, { ratio: 2.73, gain: -0.3, t60: 2 }, { ratio: 5.4, gain: 0.2, t60: 0.2 }]
+	let s = fitModal(modal(330, { modes, duration: 1.5 }))
+	is(s.modes.length, 4, 'four modes, the 6.6 Hz pair resolved')
+	exact(modalErrors(playedModes({ freq: 330, modes }), s), 'inharmonic, a pair 6.6 Hz apart')
+	almost(s.freq, 330, 1e-4, 'ratio 1 on the mode carrying the most energy')
+})
+
+test('modal-fit: a named model inverts: free-free bar, strike 0.7 (negative gains), HF damping', () => {
+	// synth-modal's bar: fk/f1 = (λk/λ1)², λ = 4.7300, 7.8532, 10.9956, 14.1372 (Fletcher & Rossing,
+	// The Physics of Musical Instruments, 2nd ed., ch. 2); gain sin(kπ·strike)/k over Σ|gain|;
+	// t60_k = t60·(f1/fk)^damping
+	let lambda = [4.7300, 7.8532, 10.9956, 14.1372], strike = 0.7, t60 = 1.5, damping = 0.5
+	let ratios = lambda.map(l => (l / lambda[0]) ** 2), gains = ratios.map((r, i) => Math.sin((i + 1) * Math.PI * strike) / (i + 1))
+	let sum = gains.reduce((a, g) => a + Math.abs(g), 0)
+	let truth = ratios.map((r, i) => ({ f: 220 * r, A: 0.8 * gains[i] / sum, t60: t60 * r ** -damping }))
+	let s = fitModal(modal(220, { model: 'bar', nmodes: 4, strike, t60, damping, duration: 2 }))
+	is(s.modes.length, 4, 'four modes, 220 Hz on a band edge included')
+	exact(modalErrors(truth, s), 'bar, two gains negative')
+})
+
+test('modal-fit: modes closer than an FFT bin: pairs split by 1, 2 and 5 Hz', () => {
+	let modes = [{ ratio: 1, gain: 1, t60: 3 }, { ratio: 1.001, gain: -0.7, t60: 2.5 }, { ratio: 3, gain: 0.5, t60: 2 }, { ratio: 3.002, gain: 0.4, t60: 4 }, { ratio: 6, gain: 0.3, t60: 2 }, { ratio: 6.005, gain: -0.3, t60: 2.2 }]
+	let s = fitModal(modal(1000, { modes, duration: 3 }))
+	is(s.modes.length, 6, 'six modes')
+	exact(modalErrors(playedModes({ freq: 1000, modes }), s), 'pairs at 1000, 3000, 6000 Hz')
+})
+
+test('modal-fit: the snapshot plays the strike back: modal(s.freq, s) matches the render sample for sample', () => {
+	let x = modal(180, { model: 'membrane', nmodes: 8, t60: 1.2, duration: 1 })
+	let s = fitModal(x), y = modal(s.freq, { ...s, duration: 1 }), err = 0
+	for (let i = 0; i < x.length; i++) err = Math.max(err, Math.abs(x[i] - y[i]))
+	ok(err < 1e-4 * peakOf(x), `worst sample ${(20 * Math.log10(err / peakOf(x))).toFixed(0)} dB under the peak`)
+})
+
+test('modal-fit: white noise 40 dB under the attack: within 0.1 cents, 1% of t60, 0.2 dB', () => {
+	let rnd = ((s) => () => (s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 2 ** 32)(3)
+	let modes = [{ ratio: 1, gain: 1, t60: 2 }, { ratio: 2.7565, gain: -0.6, t60: 1 }, { ratio: 5.4039, gain: 0.45, t60: 0.6 }, { ratio: 8.9330, gain: 0.35, t60: 0.4 }]
+	let x = modal(300, { modes, duration: 2 }), level = Math.sqrt(x.subarray(0, 2205).reduce((a, v) => a + v * v, 0) / 2205) / 100
+	let noisy = Float64Array.from(x, v => v + level * Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd())) // Box–Muller
+	let e = modalErrors(playedModes({ freq: 300, modes }), fitModal(noisy))
+	ok(e.n === 4 && e.cents < 0.1 && e.t60 < 0.01 && e.dB < 0.2 && e.signs, `${e.n} modes, worst ${e.cents.toFixed(4)} cents, t60 ${(100 * e.t60).toFixed(2)}%, ${e.dB.toFixed(3)} dB`)
+})
+
+test('modal-fit: onset after silence, channels, JSON, freq and nmodes options, silent input', () => {
+	let x = modal(250, { modes: [{ ratio: 1, gain: 1, t60: 1 }, { ratio: 2.3, gain: 0.4, t60: 0.5 }, { ratio: 3.9, gain: 0.2, t60: 0.3 }], duration: 1 })
+	let s = fitModal(x), late = new Float32Array(x.length + 2000)
+	late.set(x, 2000)
+	is(fitModal(late), s, '2000 samples of silence before the strike change nothing')
+	is(fitModal([x, x]), s, 'two equal channels give the mono snapshot')
+	is(JSON.parse(JSON.stringify(s)), s, 'plain JSON: { freq, amp, modes: [{ ratio, gain, t60 }] }')
+	let f = fitModal(x, { freq: 125 })
+	almost(f.modes[0].ratio, 2, 1e-6, 'freq: ratios over the given Hz')
+	is(fitModal(x, { nmodes: 2 }).modes.length, 2, 'nmodes keeps the strongest')
+	throws(() => fitModal(new Float32Array(4410)), /silent/)
+})

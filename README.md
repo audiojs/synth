@@ -21,6 +21,7 @@ Try it in the browser: [Room and speaker measurement](https://audiojs.dev/util/m
 | `@audio/synth-drum` | ✔ | membrane (pitch-drop kick) / metal (inharmonic cymbal) / noiseDrum (snare/hat) |
 | `@audio/synth-fm` | ✔ | FM (phase modulation) — Chowning 1973, single-op or serial `ops` stack, per-op feedback + index decay; `bell`/`epiano` presets; FFT sidebands match Bessel J_k to 0.00% |
 | `@audio/synth-modal` | ✔ | modal synthesis — impulse-invariant resonator bank; F&R-cited bar/membrane/plate/tube/stiff-string tables, strike-position weighting, per-mode T60 |
+| `@audio/synth-modal-fit` | ✔ | modal snapshot from audio: one strike → synth-modal's `{ freq, amp, modes: [{ ratio, gain, t60 }] }` by subband matrix pencil and joint least squares; a synth-modal render returns as itself |
 | `@audio/synth-poly` | ✔ | N-voice allocator — oldest-note steal with 5 ms fade, `{freq\|midi}` notes, any pitched generator as voice |
 | `@audio/synth-sfx` | ✔ | ZZFX-class parameterized SFX, 8 deterministic presets |
 | `@audio/synth-wavetable` | ✔ | wavetable oscillator with table morphing (`tables` required) |
@@ -28,7 +29,7 @@ Try it in the browser: [Room and speaker measurement](https://audiojs.dev/util/m
 | `@audio/synth-tonewheel-fit` | ✔ | registration from audio: NNLS on tonewheel-band tracks → nine drawbars 0..8, percussion and scanner setting, score; `888000000` returns as itself |
 | `@audio/synth-dx7` | ✔ | Yamaha DX7 FM engine: bit-exact port of the Music Synthesizer for Android core (Apache-2.0), 32 algorithms, DX7 EGs on the DX7 clock, LFO, pitch EG, VMEM/VCED sysex |
 
-**audio.js manifests**: 14/19 atoms ship one (hostable by [`audio`](https://github.com/audiojs/audio) / [`@audio/compile-wam`](https://github.com/audiojs/compile/tree/main/packages/compile-wam)). Exempt with reasons: `synth-dtmf` (symbolic digit-string input has no params representation), `synth-lfo` (modulation source, not an audio-rate processor for hosts), `synth-wavetable` (`tables` is an asset argument — arrays have no params representation; use the kernel directly), `synth-dx7` (`patch` is a 155-byte voice asset, no params representation), `synth-tonewheel-fit` (analysis: returns a registration, not audio).
+**audio.js manifests**: 14/20 atoms ship one (hostable by [`audio`](https://github.com/audiojs/audio) / [`@audio/compile-wam`](https://github.com/audiojs/compile/tree/main/packages/compile-wam)). Exempt with reasons: `synth-dtmf` (symbolic digit-string input has no params representation), `synth-lfo` (modulation source, not an audio-rate processor for hosts), `synth-wavetable` (`tables` is an asset argument — arrays have no params representation; use the kernel directly), `synth-dx7` (`patch` is a 155-byte voice asset, no params representation), `synth-tonewheel-fit` (analysis: returns a registration, not audio), `synth-modal-fit` (analysis: returns modes, not audio).
 
 Parity targets: Audacity generators, Tone.js synthesis primitives. `pink-noise` extracted from audio-filter; musical test synths also live in `beat/synth.js` + `beat/floatbeats.js` (future `floatbeats` fixtures package).
 
