@@ -1,6 +1,7 @@
-// Bench for @audio/synth-modal-fit, frozen 2026-10-10 before the fit was tuned against it: change
-// the fit, not this file. Run from the family root:
-//   node packages/synth-modal-fit/bench.js [synthetic [n] | floors | recordings | all]
+// Bench for @audio/synth-modal-fit. v1 frozen 2026-10-10 before the fit was tuned against it
+// (0254de1, d084e73); v2 (3 below) adds a measurement and held-out strikes, committed before any
+// v2 score was computed. Change the fit, not this file. Run from the family root:
+//   node packages/synth-modal-fit/bench.js [synthetic [n] | check | floors | recordings | heldout | all]
 //
 // 1. Synthetic: modes rendered by @audio/synth-modal (impulse, 2 s, amp 0.8), noise added, fit
 //    back. Rows: harmonic, free-free bar, circular membrane and free plate ratio tables (Fletcher &
@@ -28,6 +29,45 @@
 //    starts loud starts with one). A strike runs from 10 ms before its onset to 10 ms before the
 //    next, at most 2 s, at least 100 ms; kept when its peak is within 30 dB of the instrument's
 //    loudest strike and it has at most 100 clipped samples (|x| ≥ 0.99); 24 strikes at most.
+// 3. v2, approved after v1's results. The flaw of D: every recording sits on a steady background
+//    (room, microphone, MP3) some 40 dB under the strike, in bands where the instrument has no
+//    mode. Another strike of the same recording carries the same background, a modal snapshot
+//    cannot, so T counted the background as matched while every re-render paid for it. D2
+//    compares above the reference strike's own background: every cell (frame × bin) of the three
+//    spectrograms of specLoss is floored, on both signals, at the larger of the common floor and
+//    that strike's background in that bin, so content under the recording's own noise counts for
+//    nothing on either side. T and the re-render score are the same D2(a, b), a the reference
+//    strike and its background; in T, the other strike's own background counts only where it
+//    stands over a's (a different room).
+//    Background of a strike, from its onset to its end: Blackman–Harris frames (Harris 1978:
+//    sidelobes 92 dB down, so a ringing mode's leakage stays off the bins between modes) of 4096
+//    samples (fewer for strikes under 186 ms), hop 1/4; each bin's power averaged over 8 frames
+//    and its minimum over the strike taken (minimum statistics, Martin 2001: a mode decays, the
+//    background stays); then the lower fifth of those minima over a third octave around the bin
+//    (IEC 61260-1 bands; at least ±8 bins), so a mode still ringing at the strike's end is read
+//    past, not taken for background. The chain's bias is measured rather than modeled: on white
+//    noise of unit variance and the strike's length the chain reads b, and every estimate is
+//    divided by b (Martin derives the equivalent correction analytically for his smoother).
+//    Floor of a cell: a periodogram cell of stationary noise is exponential in power (chi-square,
+//    2 degrees of freedom; Percival & Walden, Spectral Analysis for Physical Applications, 1993,
+//    ch. 6), so it stays under 3× its mean in 95% of cells (e^−3 = 0.05). Each cell's magnitude
+//    is floored at √(3·P·Σw²): P the background's power per sample averaged over the cell's bin
+//    (±fs/N), or the common floor's if larger (white, 60 dB under a's RMS: v1's floor, now a floor
+//    rather than an added noise); Σw² = 3N/8 for specLoss's Hann window. Then specLoss's own two
+//    terms, unchanged (a copy, checked equal to specLoss without floors: `check`, which also runs
+//    the instrument on known inputs: the background estimate against a known noise, and D2 of a
+//    modal render without background against the same render with it).
+//    Held-out strikes, for validation: strikes the fit was never run on, listed in git before it
+//    was: new recordings (HELDOUT) and the mridanga strikes past the 24 the v1 bench takes from its
+//    file. Cut and kept by v1's rule per recording session (group), 24 per session at most. A
+//    held-out strike's floor is D2 to its nearest other strike of the same session (originals
+//    included); a strike alone in its session is reported without a floor. An instrument passes
+//    held-out when the median re-render of its held-out strikes scores under the median of their
+//    floors; the original strikes' v2 T is shown beside it. Searched and left out: a tingsha
+//    rung over a mountain stream (henderda, Freesound 57603; the stream swings 20 dB, 5 ms
+//    frames 10th–90th percentile −46 to −27 dB, which the onset rule cuts into strikes and which
+//    is no steady background), and a single ring of Indian finger cymbals (misstickle, 212541;
+//    the onset rule cuts its beating into four strikes). No clean second tingsha was found.
 //
 // Data: downloaded to $MODAL_DATA (default ~/.cache/audiojs/data/modal-fit), checked by SHA-256,
 // decoded by ffmpeg to mono 44.1 kHz. Nothing is bundled. Freesound files are its 128 kb/s MP3
@@ -40,6 +80,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { fft, cfft } from 'fourier-transform'
 import modal from '@audio/synth-modal'
 import fit from './fit.js'
 
@@ -54,6 +95,7 @@ const [part = 'all', count = 10] = process.argv.slice(2)
 
 const lcg = (seed) => () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32 // imul: exact mod 2³²
 const logu = (rnd, a, b) => a * (b / a) ** rnd()
+const gauss = (rnd) => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd()) // Box–Muller
 const quant = (v, q) => { if (!v.length) return NaN; let s = [...v].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(q * s.length))] }
 const median = (v) => quant(v, 0.5)
 const rms = (x, n = x.length) => { let s = 0; for (let i = 0; i < n; i++) s += x[i] * x[i]; return Math.sqrt(s / n) }
@@ -75,6 +117,142 @@ function D (a, b) {
 	let n = Math.min(a.length, b.length), r = rms(a, n), g = r / (rms(b, n) || 1), rnd = lcg(1), fa = new Float32Array(n), fb = new Float32Array(n)
 	for (let i = 0; i < n; i++) { let e = r * 1e-3 * Math.sqrt(3) * (2 * rnd() - 1); fa[i] = a[i] + e; fb[i] = b[i] * g + e }
 	return specLoss(fa, fb, { fs })
+}
+
+// --- v2: D2, above the reference strike's own background ---
+
+// specLoss (neural-synth's loss.js: Engel et al. 2020) with every cell of both signals floored at
+// fl[N][k], bin k of FFT size N; with no floors it is specLoss (checked by `check`)
+const SIZES = [2048, 512, 128], MELS = 48, HANN = new Map(), MEL = new Map()
+function hann (N) {
+	if (!HANN.has(N)) HANN.set(N, Float64Array.from({ length: N }, (_, i) => 0.5 * (1 - Math.cos(2 * Math.PI * i / N))))
+	return HANN.get(N)
+}
+function mags (x, pos, N, out) {
+	let w = hann(N), f = new Float64Array(N)
+	for (let i = 0; i < N; i++) f[i] = (x[pos + i] || 0) * w[i]
+	let [re, im] = fft(f)
+	for (let k = 0; k <= N >> 1; k++) out[k] = Math.hypot(re[k], im[k])
+}
+function melBank (half) { // HTK mel, 20 Hz to fs/2, rows to unit sum: loss.js's bank
+	if (MEL.has(half)) return MEL.get(half)
+	let mel = (f) => 2595 * Math.log10(1 + f / 700), imel = (m) => 700 * (10 ** (m / 2595) - 1), lo = mel(20), hi = mel(fs / 2)
+	let c = Float64Array.from({ length: MELS + 2 }, (_, i) => imel(lo + (hi - lo) * i / (MELS + 1))), bank = []
+	for (let b = 0; b < MELS; b++) {
+		let row = new Float64Array(half + 1), sum = 0
+		for (let k = 0; k <= half; k++) {
+			let f = k * fs / (2 * half)
+			row[k] = f <= c[b] || f >= c[b + 2] ? 0 : f <= c[b + 1] ? (f - c[b]) / (c[b + 1] - c[b]) : (c[b + 2] - f) / (c[b + 2] - c[b + 1])
+			sum += row[k]
+		}
+		if (sum > 0) for (let k = 0; k <= half; k++) row[k] /= sum
+		bank.push(row)
+	}
+	MEL.set(half, bank)
+	return bank
+}
+function loss (a, b, fl = null) {
+	let n = Math.min(a.length, b.length), total = 0
+	for (let N of SIZES) {
+		if (N > n) continue
+		let hop = N >> 2, half = N >> 1, f = fl?.[N], ma = new Float64Array(half + 1), mb = new Float64Array(half + 1)
+		let avgA = new Float64Array(half + 1), avgB = new Float64Array(half + 1), lin = 0, ref = 0, frames = 0
+		for (let pos = 0; pos + N <= n; pos += hop) {
+			mags(a, pos, N, ma); mags(b, pos, N, mb)
+			if (f) for (let k = 0; k <= half; k++) { if (ma[k] < f[k]) ma[k] = f[k]; if (mb[k] < f[k]) mb[k] = f[k] }
+			for (let k = 0; k <= half; k++) { let d = ma[k] - mb[k]; lin += d * d; ref += ma[k] * ma[k]; avgA[k] += ma[k]; avgB[k] += mb[k] }
+			frames++
+		}
+		if (!frames) continue
+		let mel = 0
+		for (let row of melBank(half)) {
+			let ea = 0, eb = 0
+			for (let k = 0; k <= half; k++) { ea += row[k] * avgA[k]; eb += row[k] * avgB[k] }
+			mel += Math.abs(Math.log(ea / frames + 1e-7) - Math.log(eb / frames + 1e-7))
+		}
+		total += Math.sqrt(lin / (ref + 1e-12)) + mel / MELS
+	}
+	return total
+}
+
+// background power per sample of each bin of a 4096-point grid (white noise of variance σ² reads
+// σ²): Blackman–Harris frames, each bin averaged over SMOOTH frames and its minimum over the
+// strike taken (Martin 2001), the lower fifth of those over a third octave (at least ±8 bins),
+// divided by the same chain's reading of unit white noise of the same length
+const BH = [0.35875, 0.48829, 0.14128, 0.01168], SMOOTH = 8, EXCEED = 3, BIAS = new Map()
+function chain (x) {
+	let F = Math.max(256, Math.min(4096, 2 ** Math.floor(Math.log2(x.length / 2)))), K = F / 2 + 1, frames = []
+	let w = Float64Array.from({ length: F }, (_, i) => { let t = 2 * Math.PI * i / F; return BH[0] - BH[1] * Math.cos(t) + BH[2] * Math.cos(2 * t) - BH[3] * Math.cos(3 * t) })
+	for (let p = 0; p + F <= x.length; p += F / 4) {
+		let re = new Float64Array(F), im = new Float64Array(F)
+		for (let i = 0; i < F; i++) re[i] = x[p + i] * w[i]
+		cfft(re, im)
+		frames.push(Float64Array.from({ length: K }, (_, k) => re[k] * re[k] + im[k] * im[k]))
+	}
+	let S = Math.min(SMOOTH, frames.length), m = new Float64Array(K).fill(Infinity), P = new Float64Array(K), r = 2 ** (1 / 6)
+	for (let t = 0; t + S <= frames.length; t++) for (let k = 0; k < K; k++) {
+		let v = 0
+		for (let j = t; j < t + S; j++) v += frames[j][k]
+		if (v / S < m[k]) m[k] = v / S
+	}
+	for (let k = 0; k < K; k++) P[k] = quant(m.subarray(Math.max(0, Math.min(k - 8, Math.floor(k / r))), Math.min(K - 1, Math.max(k + 8, Math.ceil(k * r))) + 1), 0.2)
+	return { F, P }
+}
+function background (x) {
+	if (!BIAS.has(x.length)) {
+		let rnd = lcg(5), z = Float64Array.from({ length: x.length }, () => gauss(rnd))
+		BIAS.set(x.length, median(chain(z).P.subarray(1, -1)))
+	}
+	let { F, P } = chain(x), b = BIAS.get(x.length)
+	return { F, P: P.map(v => v / b) }
+}
+
+// floor magnitude of every bin of every FFT size: √(EXCEED·P·Σw²), P the background averaged over
+// the bin (±fs/N) or the common floor σ2 if larger, Σw² = 3N/8 (Hann)
+function cellFloors ({ F, P }, s2) {
+	let out = {}
+	for (let N of SIZES) {
+		let half = N >> 1, r = F / N, f = new Float64Array(half + 1)
+		for (let j = 0; j <= half; j++) {
+			let lo = Math.max(0, Math.round((j - 1) * r)), hi = Math.min(F / 2, Math.round((j + 1) * r)), s = 0
+			for (let k = lo; k <= hi; k++) s += P[k]
+			f[j] = Math.sqrt(EXCEED * Math.max(s / (hi - lo + 1), s2) * 3 * N / 8)
+		}
+		out[N] = f
+	}
+	return out
+}
+
+// D2(A, b): A = { s, bg } the reference strike and its background (from its onset); aligned and
+// level-matched as D, the common floor white at 60 dB under a's RMS
+const withBg = (s) => ({ s, bg: background(s.subarray(onset(s))) })
+function D2 ({ s: a, bg }, b) {
+	a = a.subarray(onset(a)); b = b.subarray(onset(b))
+	let n = Math.min(a.length, b.length), r = rms(a, n), g = r / (rms(b, n) || 1), fb = new Float64Array(n)
+	for (let i = 0; i < n; i++) fb[i] = b[i] * g
+	return loss(a.subarray(0, n), fb, cellFloors(bg, (r * 1e-3) ** 2))
+}
+
+// the instrument on known inputs: loss ≡ specLoss without floors; the background estimate against
+// a known noise under ringing modes; D and D2 of a modal render against itself with a background
+function check () {
+	let rnd = lcg(11), x = Float64Array.from({ length: 44100 }, () => gauss(rnd)), y = Float64Array.from(x, v => v + 0.3 * gauss(rnd))
+	console.log(`loss without floors − specLoss: ${Math.abs(loss(x, y) - specLoss(x, y, { fs })).toExponential(1)} (specLoss ${specLoss(x, y, { fs }).toFixed(6)})`)
+	// 40 modes 300 Hz–12 kHz, t60 0.5–5 s, 2 s; noise pink-tilted (white plus a one-pole lowpass), RMS
+	// 40 dB under the first 50 ms
+	let modes = Array.from({ length: 40 }, () => ({ ratio: logu(rnd, 1, 40), gain: (rnd() < 0.5 ? -1 : 1) * 10 ** (-20 * rnd() / 20), t60: logu(rnd, 0.5, 5) }))
+	let clean = modal(300, { modes, duration: 2, fs }), N = clean.length, e = new Float64Array(N), e2 = new Float64Array(N), lp = 0, lp2 = 0
+	for (let i = 0; i < N; i++) { let u = gauss(rnd), v = gauss(rnd); lp = 0.95 * lp + u; lp2 = 0.95 * lp2 + v; e[i] = u + 0.3 * lp; e2[i] = v + 0.3 * lp2 }
+	let lvl = rms(clean, 2205) * 1e-2 / rms(e), A = Float64Array.from(clean, (v, i) => v + lvl * e[i]), B = Float64Array.from(clean, (v, i) => v + lvl * e2[i])
+	let { F, P } = background(A.subarray(onset(A))), nb = background(Float64Array.from(e, v => v * lvl)), err = []
+	for (let fc = 250; fc < 16000; fc *= 2 ** (1 / 3)) {
+		let lo = Math.round(fc * 2 ** (-1 / 6) * F / fs), hi = Math.round(fc * 2 ** (1 / 6) * F / fs), p = 0, q = 0
+		for (let k = lo; k <= hi; k++) { p += P[k]; q += nb.P[k] }
+		err.push(10 * Math.log10(p / q))
+	}
+	console.log(`background under 40 ringing modes against the noise alone, third octaves 250 Hz–16 kHz: median ${median(err).toFixed(2)} dB, range ${Math.min(...err).toFixed(2)} to ${Math.max(...err).toFixed(2)} dB`)
+	let a = withBg(A)
+	console.log(`render with background a, the same render b without, with another background c:  D(a,b) ${D(A, clean).toFixed(3)}  D(a,c) ${D(A, B).toFixed(3)}  |  D2(a,b) ${D2(a, clean).toFixed(3)}  D2(a,c) ${D2(a, B).toFixed(3)}`)
 }
 
 // --- 1. synthetic ---
@@ -220,49 +398,79 @@ function cut (x) {
 	}).filter(s => s.length >= 0.1 * fs)
 }
 
-async function strikes () {
+// held-out recordings: never fitted before this list was committed. group: the recording session
+// a strike's floor is read within (originals: one session per instrument; Da_Test01 joins the
+// tabla's). Commons files: the uploaded originals.
+const WM = (file, title, author, license) => ({ url: `https://upload.wikimedia.org/wikipedia/commons/${file}`, page: `https://commons.wikimedia.org/wiki/File:${file.split('/').pop()}`, title, author, license })
+const HELDOUT = [
+	{ instrument: 'karatala', group: 'hand cymbals, Japan', file: 'hand-cymbals-japan.mp3', sha256: '3b7bd267a976fe85c13db08f3bdaf4a5e44c88eb7a71930789e85c16e3a64ec6', ...FS(365414, 179538, 'Japan_Asian_Hand_Cymbals_Improv.wav', 'RutgerMuller', 'CC0 1.0') },
+	{ instrument: 'karatala', group: 'zill 7 cm, Nepal', file: 'zill-small-1.mp3', sha256: '6f602e4b28788c5cb43f49b596c6a897ceb2fb4567a7094967d4a6e107267146', ...WM('6/63/Audio_Zill_small_1.mp3', 'Audio Zill small 1', 'Hadi', 'CC0 1.0') },
+	{ instrument: 'karatala', group: 'zill 7 cm, Nepal', file: 'zill-small-2.mp3', sha256: '5ba8f0158a9bf62b9d6f95c98f9ca567e0a1ba0ab005067de25436cbdc3967e7', ...WM('4/45/Audio_Zill_small_2.mp3', 'Audio Zill small 2', 'Hadi', 'CC0 1.0') },
+	{ instrument: 'karatala', group: 'manjira', file: 'manjeera.mp3', sha256: 'c64f2dceccf9f009e07c446850a232264565f1e7b333e8ca660d5a83d0fa11c8', ...FS(418152, 4844309, 'ornamental manjeera.wav', 'johnnyguitar01', 'CC0 1.0') },
+	{ instrument: 'finger cymbals', group: 'Zildjian finger cymbals', file: 'finger-cymbals-zildjian.mp3', sha256: 'a5462ed095dead9556136cf2fa64161329378e026288e0c7653c842d04f8e09a', ...FS(626655, 8765604, 'finger cymbals', 'peter_fedak', 'CC BY 4.0') },
+	{ instrument: 'finger cymbals', group: 'finger cymbal, thatjeffcarter', file: 'finger-cymbal-carter.mp3', sha256: 'cbafaffde06345a327a453fce9adaad0f727c31283e4a6f8293ef48cbee448f9', ...FS(146070, 1306869, 'finger cymbal.wav', 'thatjeffcarter', 'CC BY 4.0') },
+	{ instrument: 'finger cymbals', group: 'Sabian finger cymbals', file: 'finger-cymbals-sabian.ogg', sha256: 'f2a02068cd1ec632301d4dc078661c1d58b1c62ae109a9179bad4e6e942bc3d7', ...WM('7/7c/Finger_cymbals.ogg', 'Finger cymbals', 'Why? I Ask', 'CC BY-SA 4.0') },
+	{ instrument: 'bell', group: 'rin', file: 'rin.ogg', sha256: '41b049a3f5a41dc3e1b81448d1331b82a1c97a62ea2086065d2e9712ae000634', ...WM('e/e6/Japanese_rin_played_as_struck_idiophone.ogg', 'Japanese rin played as struck idiophone', 'MichaelMaggs', 'CC BY-SA 4.0') },
+	{ instrument: 'bell', group: 'miniature bell', file: 'bell-miniature.wav', sha256: '9e4593bd96a9d1fa90abf48516101ed6ec41d62d566af7374b02f219fc275194', ...WM('1/11/Sonido_de_campana_miniatura_1.wav', 'Sonido de campana miniatura 1', 'Luis Alvaz', 'CC BY-SA 4.0') },
+	{ instrument: 'ghanta', group: 'drilbu', file: 'drilbu.mp3', sha256: 'a64ab92a8d34ec1d822a248aec2089df1bf649a28ba0d93873cc8e803e17a164', ...FS(516574, 11350634, '01drilbu', 'tenzin64', 'CC0 1.0') },
+	{ instrument: 'tabla', group: 'tabla', file: 'tabla-da-01.mp3', sha256: 'e039acc4aba016a730e4ec7c59520a495f606669996fbc67b4d8ebf1e12fb5ca', ...FS(345576, 6240954, 'Da_Test01.wav', 'subodh3012', 'CC0 1.0') },
+	{ instrument: 'mridanga', group: 'Mridangam-Khanda', file: 'mridangam-khanda.mp3', sha256: '1247630953cc161d81dfeb9236ad748af8e699b8dca4cb99d08843d838131c87', ...FS(176276, 2385996, 'Mridangam-Khanda', 'ajaysm', 'CC0 1.0') },
+]
+const group = (src) => src.group ?? src.instrument
+
+// strikes of the sources by key (v1: instrument), kept by v1's rule: the first 24 in `kept`, the
+// rest that pass in `rest`
+async function strikes (sources = SOURCES, key = (src) => src.instrument) {
 	let by = new Map()
-	for (let src of SOURCES) {
+	for (let src of sources) {
 		let x = await load(src)
-		if (!by.has(src.instrument)) by.set(src.instrument, [])
-		by.get(src.instrument).push(...cut(x).map(s => ({ s, src })))
+		if (!by.has(key(src))) by.set(key(src), [])
+		by.get(key(src)).push(...cut(x).map(s => ({ s, src })))
 	}
 	for (let [name, list] of by) {
 		let peak = (s) => s.reduce((m, v) => Math.max(m, Math.abs(v)), 0), top = Math.max(...list.map(({ s }) => peak(s)))
-		by.set(name, list.filter(({ s }) => peak(s) >= top * 10 ** (-30 / 20) && s.filter(v => Math.abs(v) >= 0.99).length <= 100).slice(0, 24))
+		let ok = list.filter(({ s }) => peak(s) >= top * 10 ** (-30 / 20) && s.filter(v => Math.abs(v) >= 0.99).length <= 100)
+		by.set(name, { kept: ok.slice(0, 24), rest: ok.slice(24) })
 	}
 	return by
 }
 
-function floors (list) {
-	return list.map((a, i) => Math.min(...list.filter((_, j) => j !== i).map(b => D(a.s, b.s))))
+// each strike's floor: D (or D2) to its nearest other strike among `others` (default: the list)
+const nearest = (a, others, d) => Math.min(...others.filter(b => b !== a).map(b => d(a, b.s)), Infinity)
+const floors = (list, d, others = list) => list.map(a => nearest(a, others, d))
+const v1 = (a, b) => D(a.s, b), v2 = (a, b) => D2(a, b)
+
+// a fit's re-render of each strike; null when the fit throws
+function refit (list) {
+	for (let a of list) {
+		let [r, t] = cpu(() => { try { return fit(a.s, { fs }) } catch (e) { return null } })
+		Object.assign(a, { r, ms: t, y: r && modal(r.freq, { ...r, fs, duration: a.s.length / fs }) })
+	}
 }
+const fmt = (v, d = 3) => Number.isFinite(v) ? v.toFixed(d) : '–'
+const range = (v) => v.length ? `${fmt(Math.min(...v))}–${fmt(Math.max(...v))}` : ''
+
+// one table row: floors fl, re-render scores R; a strike passes under its own floor
+function verdict (fl, R) {
+	let has = fl.map(Number.isFinite), T = median(fl.filter((_, i) => has[i])), Rm = median(R.filter((_, i) => has[i]))
+	return { T, Rm, Rall: median(R), pass: R.filter((v, i) => has[i] && v < fl[i]).length, n: has.filter(Boolean).length, ok: Number.isFinite(T) && !Number.isNaN(Rm) ? Rm < T : null }
+}
+const cell = ({ T, Rall, pass, n, ok }, fl, R) => `${fmt(T).padStart(6)} ${range(fl.filter(Number.isFinite)).padStart(12)} | ${fmt(Rall).padStart(6)} ${range(R).padStart(12)} ${(n ? `${pass}/${n}` : '–').padStart(5)} ${ok == null ? '   –' : ok ? 'pass' : 'FAIL'}`
 
 async function recordings (scoreFit) {
 	let by = await strikes()
-	console.log(`Recordings: strikes, floor = D to the nearest other strike, threshold T = median floor${scoreFit ? '; R = D to the re-render, R1 = the strongest mode alone' : ''}`)
-	console.log(`instrument      strikes | T (floor) floor range    ${scoreFit ? '| R median  R range        pass  | R1 median | modes | cpu ms | verdict' : ''}`)
+	console.log(`Recordings, original strikes: floor = distance to the nearest other strike, T = median floor${scoreFit ? '; R = distance to the re-render (median, range), strikes under their own floor, verdict' : ''}`)
+	console.log(`instrument      strikes | v1: T     floor range | R      R range      pass  verdict | v2: T     floor range | R      R range      pass  verdict ${scoreFit ? '| modes | cpu ms' : ''}`)
 	let out = []
-	for (let [name, list] of by) {
+	for (let [name, { kept: list }] of by) {
+		list = list.map(({ s, src }) => ({ ...withBg(s), src }))
 		// one strike has no floor: its re-render is reported without a verdict
-		let fl = list.length > 1 ? floors(list) : [], T = fl.length ? median(fl) : NaN
-		let line = `${name.padEnd(15)} ${String(list.length).padStart(7)} | ${(fl.length ? T.toFixed(3) : '–').padStart(9)} ${(fl.length ? `${Math.min(...fl).toFixed(3)}–${Math.max(...fl).toFixed(3)}` : '').padStart(13)}   `
-		let row = { name, strikes: list.length, T, floors: fl }
-		if (scoreFit) {
-			let R = [], R1 = [], modes = [], ms = []
-			for (let { s } of list) {
-				let [r, t] = cpu(() => { try { return fit(s, { fs }) } catch (e) { return null } })
-				ms.push(t); modes.push(r?.modes.length ?? 0)
-				if (!r) { R.push(Infinity); R1.push(Infinity); continue }
-				R.push(D(s, modal(r.freq, { ...r, fs, duration: s.length / fs })))
-				let ref = r.modes.find(m => m.ratio === 1) ?? r.modes[0], sum = r.modes.reduce((a, m) => a + Math.abs(m.gain), 0)
-				R1.push(D(s, modal(r.freq, { modes: [ref], amp: r.amp * Math.abs(ref.gain) / sum, fs, duration: s.length / fs })))
-			}
-			let pass = R.filter((v, i) => v < fl[i]).length, ok = fl.length ? median(R) < T : null
-			Object.assign(row, { R, R1, pass, modes: median(modes), ms: median(ms), ok })
-			line += `| ${median(R).toFixed(3).padStart(8)} ${`${Math.min(...R).toFixed(3)}–${Math.max(...R).toFixed(3)}`.padStart(13)}  ${(fl.length ? `${pass}/${list.length}` : '–').padStart(5)} | ${median(R1).toFixed(3).padStart(9)} | ${String(median(modes)).padStart(5)} | ${median(ms).toFixed(0).padStart(6)} | ${ok == null ? '–' : ok ? 'pass' : 'FAIL'}`
-		}
-		console.log(line)
+		let f1 = list.length > 1 ? floors(list, v1) : list.map(() => NaN), f2 = list.length > 1 ? floors(list, v2) : list.map(() => NaN), row = { name, strikes: list.length, f1, f2 }
+		if (scoreFit) refit(list)
+		let R1 = list.map(a => !scoreFit ? NaN : a.y ? D(a.s, a.y) : Infinity), R2 = list.map(a => !scoreFit ? NaN : a.y ? D2(a, a.y) : Infinity)
+		let e1 = verdict(f1, R1), e2 = verdict(f2, R2)
+		Object.assign(row, { R1, R2, e1, e2, modes: median(list.map(a => a.r?.modes.length ?? 0)), ms: median(list.map(a => a.ms)) })
+		console.log(`${name.padEnd(15)} ${String(list.length).padStart(7)} | ${cell(e1, f1, scoreFit ? R1 : [])} | ${cell(e2, f2, scoreFit ? R2 : [])} ${scoreFit ? `| ${String(row.modes).padStart(5)} | ${fmt(row.ms, 0).padStart(6)}` : ''}`)
 		out.push(row)
 	}
 	console.log('\nSources:')
@@ -270,6 +478,41 @@ async function recordings (scoreFit) {
 	return out
 }
 
+// held-out: new recordings by session, and the strikes past the 24 v1 takes from its files, each
+// floored against its own session (originals included)
+async function heldout () {
+	let orig = await strikes(), held = await strikes(HELDOUT, group), sessions = new Map()
+	const add = (g, list, key) => { if (!sessions.has(g)) sessions.set(g, { orig: [], held: [] }); sessions.get(g)[key].push(...list.map(({ s, src }) => ({ ...withBg(s), src }))) }
+	for (let { kept, rest } of orig.values()) {
+		for (let [g, k] of [[kept, 'orig'], [rest.slice(0, 24), 'held']]) for (let a of g) add(group(a.src), [a], k)
+	}
+	for (let [g, { kept }] of held) add(g, kept, 'held')
+	console.log('Held-out strikes: floor = distance to the nearest other strike of the session (originals included); T = median floor of the held-out strikes; R = distance to the re-render')
+	console.log(`instrument      session                        strikes | v1: T     floor range | R      R range      pass  verdict | v2: T     floor range | R      R range      pass  verdict | v2 T of originals`)
+	let by = new Map(), out = []
+	for (let [g, { orig: o, held: h }] of sessions) {
+		if (!h.length) continue
+		let name = h[0].src.instrument, all = [...o, ...h]
+		let f1 = floors(h, v1, all), f2 = floors(h, v2, all)
+		refit(h)
+		let R1 = h.map(a => a.y ? D(a.s, a.y) : Infinity), R2 = h.map(a => a.y ? D2(a, a.y) : Infinity), e1 = verdict(f1, R1), e2 = verdict(f2, R2)
+		let To = o.length > 1 ? median(floors(o, v2)) : NaN
+		console.log(`${name.padEnd(15)} ${g.padEnd(30)} ${String(h.length).padStart(7)} | ${cell(e1, f1, R1)} | ${cell(e2, f2, R2)} | ${fmt(To)}`)
+		if (!by.has(name)) by.set(name, { f1: [], f2: [], R1: [], R2: [] })
+		let b = by.get(name)
+		b.f1.push(...f1); b.f2.push(...f2); b.R1.push(...R1); b.R2.push(...R2)
+		out.push({ name, group: g, strikes: h.length, f1, f2, R1, R2, e1, e2, To })
+	}
+	console.log('\nBy instrument, held-out strikes with a floor pooled:')
+	for (let [name, b] of by) console.log(`${name.padEnd(15)} ${String(b.f2.filter(Number.isFinite).length).padStart(7)} | ${cell(verdict(b.f1, b.R1), b.f1, b.R1)} | ${cell(verdict(b.f2, b.R2), b.f2, b.R2)}`)
+	console.log('\nHeld-out sources:')
+	for (let s of HELDOUT) console.log(`  ${s.instrument} (${group(s)}): "${s.title}" by ${s.author}, ${s.license}, ${s.page}`)
+	console.log('  mridanga: Mridangam-Tishra strikes 25 on (the v1 bench takes the first 24)')
+	return out
+}
+
+if (part === 'check') check()
 if (part === 'synthetic' || part === 'all') synthetic(Number(count))
 if (part === 'floors') await recordings(false)
 if (part === 'recordings' || part === 'all') await recordings(true)
+if (part === 'heldout' || part === 'all') await heldout()
