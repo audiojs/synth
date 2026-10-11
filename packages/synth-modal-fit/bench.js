@@ -63,7 +63,7 @@
 //    held-out strike's floor is D2 to its nearest other strike of the same session (originals
 //    included); a strike alone in its session is reported without a floor. An instrument passes
 //    held-out when the median re-render of its held-out strikes scores under the median of their
-//    floors; the original strikes' v2 T is shown beside it. Searched and left out: a tingsha
+//    floors; the v2 T of the session's original strikes, where it has any, is shown beside it. Searched and left out: a tingsha
 //    rung over a mountain stream (henderda, Freesound 57603; the stream swings 20 dB, 5 ms
 //    frames 10th–90th percentile −46 to −27 dB, which the onset rule cuts into strikes and which
 //    is no steady background), and a single ring of Indian finger cymbals (misstickle, 212541;
@@ -488,7 +488,7 @@ async function heldout () {
 	}
 	for (let [g, { kept }] of held) add(g, kept, 'held')
 	console.log('Held-out strikes: floor = distance to the nearest other strike of the session (originals included); T = median floor of the held-out strikes; R = distance to the re-render')
-	console.log(`instrument      session                        strikes | v1: T     floor range | R      R range      pass  verdict | v2: T     floor range | R      R range      pass  verdict | v2 T of originals`)
+	console.log(`instrument      session                        strikes | v1: T     floor range | R      R range      pass  verdict | v2: T     floor range | R      R range      pass  verdict | v2 T, the session's originals`)
 	let by = new Map(), out = []
 	for (let [g, { orig: o, held: h }] of sessions) {
 		if (!h.length) continue
