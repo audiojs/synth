@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-modal-fit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Modal snapshot from audio: one strike → synth-modal's { freq, amp, modes: [{ ratio, gain, t60 }] } (subband matrix pencil, least-squares amplitudes)",
   "type": "module",
   "sideEffects": false,
