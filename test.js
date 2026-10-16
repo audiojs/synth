@@ -15,7 +15,7 @@ test('pinkNoise — spectral slope ~-3dB/octave', () => {
 	let N = 65536, fs = 44100
 	let data = new Float64Array(N)
 	let seed = 12345
-	for (let i = 0; i < N; i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; data[i] = (seed / 0x7fffffff) * 2 - 1 }
+	for (let i = 0; i < N; i++) { seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff; data[i] = (seed / 0x7fffffff) * 2 - 1 }
 	audio.pinkNoise(data, {})
 	let powerLow = 0, powerHigh = 0, countLow = 0, countHigh = 0, binSize = fs / N
 	for (let f = 200; f < 400; f += binSize) { let m = dftMag(data, f, fs); powerLow += m * m; countLow++ }
@@ -26,7 +26,7 @@ test('pinkNoise — spectral slope ~-3dB/octave', () => {
 
 
 import { noise, white, chirp, osc } from './index.js'
-import { fft } from 'fourier-transform'
+import { fft, ifft } from 'fourier-transform'
 
 // average magnitude spectrum (Welch), then dB slope between two frequencies
 function slopeDbPerOct (d, fLo = 500, fHi = 8000, sr = 44100) {
@@ -64,6 +64,92 @@ test('noise colors — spectral slopes ordered and near nominal dB/oct', () => {
 	// deterministic
 	let a = noise(1024 / 8000, { color: 'pink', seed: 7, fs: 8000 }), b = noise(1024 / 8000, { color: 'pink', seed: 7, fs: 8000 })
 	ok(a.every((v, i) => v === b[i]), 'seeded reproducible')
+})
+
+import { pink, brown, blue, violet, noiseDrum } from './index.js'
+
+// x ← (1103515245·x + 12345) mod 2³¹ in exact integers: glibc's random_r TYPE_0 (stdlib/random_r.c),
+// period 2³¹ by Hull–Dobell (c odd, a ≡ 1 mod 4); the generators read x as x / (2³⁰ − 1) − 1
+function lcgExact (seed, n) {
+	let x = BigInt(seed), d = new Float64Array(n)
+	for (let i = 0; i < n; i++) { x = (x * 1103515245n + 12345n) % 2n ** 31n; d[i] = Number(x) / 0x3fffffff - 1 }
+	return d
+}
+
+test("noise: white, pluck, noiseDrum and modal's noise burst follow the LCG exactly (a double product past 2⁵³ parted from it at the second sample)", () => {
+	let n = 11025, x1 = lcgExact(1, n), x9 = lcgExact(9, n)
+	let w = white(n / 44100, { seed: 1 })
+	is(w.findIndex((v, i) => v !== Math.fround(0.9 * x1[i])), -1, 'white, seed 1')
+	let p = pluck(44100 / n, { seed: 9, duration: n / 44100 }) // one period long: the burst itself
+	is(p.findIndex((v, i) => v !== Math.fround(0.7 * x9[i])), -1, 'pluck, seed 9')
+	let d = noiseDrum() // seed 9, 0.25 s
+	is(d.findIndex((v, i) => v !== Math.fround(0.7 * x9[i] * Math.exp(-i / n * 7))), -1, 'noiseDrum, seed 9')
+	// one mode at fs/4 that dies within a sample (r ≈ e⁻¹⁵⁷, sin θ = 1) passes the 5 ms burst through
+	let m = modal(24000, { modes: [{ ratio: 1, gain: 1, t60: 1e-6 }], exciter: 'noise', seed: 9, amp: 1, fs: 96000, duration: 0.01 })
+	is(m.subarray(0, 480).findIndex((v, i) => v !== Math.fround(x9[i])), -1, 'modal noise burst, seed 9, 96 kHz')
+})
+
+// Brent's cycle detection over a stream: a pair of consecutive samples stands for the state (a state
+// that recurs repeats every pair after it). A state revisited within 2²² steps shows by sample 2²³:
+// Brent's window 2ᵏ ≤ 2²² then spans both the tail before the cycle and the cycle
+function recurrence (d) {
+	let power = 1, lam = 1, t = 0
+	for (let h = 1; h + 1 < d.length; h++, lam++) {
+		if (d[t] === d[h] && d[t + 1] === d[h + 1]) return h - t
+		if (power === lam) { t = h; power *= 2; lam = 0 }
+	}
+	return Infinity
+}
+
+test('noise: white revisits no state within 2²² steps from seeds 1, 9, 7920, 65536 (was: a loop of 10,466 samples, of 220 from seed 9)', () => {
+	for (let seed of [1, 9, 7920, 65536]) {
+		let r = recurrence(white((2 ** 23 + 1) / 44100, { seed }))
+		is(r, Infinity, `seed ${seed}: ${r === Infinity ? 'no state recurs' : 'repeats every ' + r + ' samples'}`)
+	}
+})
+
+// normalized correlation Σ a[i]·b[i+k] / √(Σa²·Σb²), means removed, by a zero-padded FFT: lag k at [k], −k at [N − k]
+function xcorr (a, b) {
+	let N = 2 ** Math.ceil(Math.log2(2 * Math.max(a.length, b.length)))
+	let [pa, ea] = centered(a, N), [pb, eb] = centered(b, N)
+	let [ar, ai] = fft(pa).map(v => v.slice()), [br, bi] = fft(pb)
+	let re = ar.map((v, k) => v * br[k] + ai[k] * bi[k]), im = ar.map((v, k) => v * bi[k] - ai[k] * br[k])
+	return ifft(re, im).map(v => v / Math.sqrt(ea * eb))
+}
+function centered (x, N) {
+	let m = x.reduce((s, v) => s + v, 0) / x.length, d = new Float64Array(N), e = 0
+	for (let i = 0; i < x.length; i++) { d[i] = x[i] - m; e += d[i] * d[i] }
+	return [d, e]
+}
+const peakLag = (c, L, from = 1) => { let m = 0; for (let k = from; k <= L; k++) m = Math.max(m, Math.abs(c[k]), Math.abs(c[(c.length - k) % c.length])); return m }
+
+test("noise: white is uncorrelated at every lag up to 2¹⁶, and so are the atom's channels (seed + 7919·c)", () => {
+	let dur = 2 ** 20 / 44100, L = 2 ** 16
+	for (let seed of [1, 9]) {
+		let w = white(dur, { seed }), r = peakLag(xcorr(w, w), L)
+		ok(r < 0.02, `seed ${seed}: |r| ≤ ${r.toFixed(4)} at lags 1..${L}`)
+	}
+	let r = peakLag(xcorr(white(dur, { seed: 1 }), white(dur, { seed: 7920 })), L, 0)
+	ok(r < 0.02, `seeds 1 and 7920 (channels 0 and 1): |r| ≤ ${r.toFixed(4)} at lags −${L}..${L}`)
+})
+
+test('noise: pink −3, brown −6 dB/oct within 0.3 over 125 Hz–8 kHz, 47 s from seeds 1 and 9', () => {
+	let dur = 2 ** 21 / 44100
+	for (let seed of [1, 9]) {
+		let p = slopeDbPerOct(pink(dur, { seed }), 125, 8000), b = slopeDbPerOct(brown(dur, { seed }), 125, 8000)
+		almost(p, -3, 0.3, `pink, seed ${seed}: ${p.toFixed(2)} dB/oct`)
+		almost(b, -6, 0.3, `brown, seed ${seed}: ${b.toFixed(2)} dB/oct`)
+	}
+})
+
+test('noise: the same seed gives the same samples, another seed other samples, every color', () => {
+	let dur = 4096 / 44100
+	for (let [name, f] of Object.entries({ white, pink, brown, blue, violet })) {
+		let a = f(dur, { seed: 7 }), b = f(dur, { seed: 7 }), c = f(dur, { seed: 8 })
+		ok(a.every((v, i) => v === b[i]), `${name}: seed 7 twice, the same samples`)
+		let same = c.filter((v, i) => v === a[i]).length
+		ok(same < a.length / 100, `${name}: seeds 7 and 8 share ${same} of ${a.length} samples`)
+	}
 })
 
 function zcFreq (d, from, to, sr = 44100) {
@@ -506,7 +592,7 @@ const ROM1A = join(MSFA, 'app/src/main/res/raw/rom1a.syx') // Yamaha's factory v
 // VCED parameter maxima (DX7 Operating Manual, MIDI data format), for random valid voices
 const DX7_OP = [99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 3, 3, 7, 3, 7, 99, 1, 31, 99, 14]
 const DX7_GLOBAL = [99, 99, 99, 99, 99, 99, 99, 99, 31, 7, 1, 99, 99, 99, 99, 1, 5, 7, 48]
-const lcg = (seed) => (n) => { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) % (n + 1) }
+const lcg = (seed) => (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) % (n + 1) } // imul: exact mod 2³²
 function dx7Random (rnd) {
 	let p = new Uint8Array(155)
 	for (let op = 0; op < 6; op++) DX7_OP.forEach((m, i) => p[op * 21 + i] = rnd(m))
@@ -799,7 +885,8 @@ test('tonewheel-fit: chords, and the key of a single note when no pitch is given
 		is(fitTonewheel(tonewheel(chord, { drawbars, duration: 1.5 }), { freq: chord }).drawbars, drawbars, `major triad ${drawbars}`)
 	}
 	for (let { drawbars } of randomRegistrations(6, 14)) {
-		let reg = '0' + drawbars[1] + '8' + drawbars.slice(3), key = 40 + rnd(40) // 8' sounding, 16' off: the key is the pitch heard
+		let key = 40 + rnd(40), fold = wheel(key, 8) === wheel(key, 5) // the top keys' 1' sounds on the 2' wheel: only their sum is heard
+		let reg = '0' + drawbars[1] + '8' + drawbars.slice(3, 8) + (fold ? '0' : drawbars[8]) // 8' sounding, 16' off: the key is the pitch heard
 		let r = fitTonewheel(tonewheel(440 * 2 ** ((key - 69) / 12), { drawbars: reg, duration: 1.5 }))
 		ok(r.keys[0] === key && r.drawbars === reg, `key ${key} ${reg} → ${r.keys[0]} ${r.drawbars}`)
 	}

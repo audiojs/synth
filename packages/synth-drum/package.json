@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-drum",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Drum synthesis — membrane kick, metal cymbal, noise snare (Tone.js class)",
   "type": "module",
   "sideEffects": false,

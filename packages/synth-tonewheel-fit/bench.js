@@ -9,7 +9,7 @@ import freeverb from '@audio/reverb-freeverb'
 import fit from './fit.js'
 
 const fs = 44100, N = Number(process.argv[2] || 100)
-const lcg = (seed) => (n) => { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) % (n + 1) }
+const lcg = (seed) => (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 8) % (n + 1) } // imul: exact mod 2³²
 const hz = (key) => 440 * 2 ** ((key - 69) / 12)
 function registrations (n, seed, canonical = true) {
 	let rnd = lcg(seed)

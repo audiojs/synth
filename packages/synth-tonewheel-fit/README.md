@@ -43,13 +43,13 @@ r.keys         // MIDI keys analyzed
 | dry; vibrato V1–V3; chorus C1–C3, setting read | 100% | 100% |
 | dry, gain known, any registration | 100% | |
 | major triads, dry | 100% | 100% |
-| Leslie chorale, two mics ([`effect-rotary`](https://github.com/audiojs/effect/tree/main/packages/effect-rotary)) | 87% | 100% |
-| Leslie tremolo, two mics | 80% | 100% |
-| Leslie chorale, one mic | 9% | 95% |
-| Leslie chorale, both mics summed to mono | 0% | 9% |
-| reverb, [`reverb-freeverb`](https://github.com/audiojs/reverb/tree/main/packages/reverb-freeverb) defaults (mix 0.33) | 20% | 93% |
-| reverb, mix 0.15 | 89% | 100% |
-| major triads, reverb mix 0.33 | 34% | 100% |
+| Leslie chorale, two mics ([`effect-rotary`](https://github.com/audiojs/effect/tree/main/packages/effect-rotary)) | 78% | 100% |
+| Leslie tremolo, two mics | 78% | 100% |
+| Leslie chorale, one mic | 6% | 95% |
+| Leslie chorale, both mics summed to mono | 0% | 2% |
+| reverb, [`reverb-freeverb`](https://github.com/audiojs/reverb/tree/main/packages/reverb-freeverb) defaults (mix 0.33) | 28% | 89% |
+| reverb, mix 0.15 | 96% | 100% |
+| major triads, reverb mix 0.33 | 29% | 98% |
 
 The misses come from the effects, which color each partial by more than the ±1.5 dB between drawbar steps: the Leslie's crossover costs one mic up to 2 dB near 800 Hz, summing its two mics combs the horn band by up to 4.5 dB, and a room gives every steady partial its own ±1.7 dB. More keys average the room out; two mics beat one. A fit takes about 45 ms of CPU for a 1.5 s note.
 

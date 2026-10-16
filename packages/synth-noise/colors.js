@@ -9,10 +9,13 @@
 import pinkNoise from './pink-noise.js'
 export { default as pinkNoise } from './pink-noise.js'
 
+// x ← (1103515245·x + 12345) mod 2³¹ (glibc's TYPE_0 random()), period 2³¹. Math.imul keeps the
+// product exact mod 2³²: as a double it passes 2⁵³, its low bits round, and each of the seeds
+// 1..65536 then falls into a cycle of 10,466 steps or fewer
 function lcg (seed) {
 	let s = seed >>> 0 || 1
 	return () => {
-		s = (s * 1103515245 + 12345) & 0x7fffffff
+		s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff
 		return s / 0x3fffffff - 1
 	}
 }

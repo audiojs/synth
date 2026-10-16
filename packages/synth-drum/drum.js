@@ -26,7 +26,7 @@ export function noiseDrum ({ duration = 0.25, fs = 44100, amp = 0.7, seed = 9 } 
 	let n = Math.round(duration * fs)
 	let out = new Float32Array(n)
 	let s = seed
-	for (let i = 0; i < n; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; out[i] = amp * (s / 0x3fffffff - 1) * Math.exp(-i / n * 7) }
+	for (let i = 0; i < n; i++) { s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff; out[i] = amp * (s / 0x3fffffff - 1) * Math.exp(-i / n * 7) } // imul: exact mod 2³²
 	return out
 }
 

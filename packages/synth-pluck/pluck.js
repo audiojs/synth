@@ -5,7 +5,7 @@ export default function pluck (freq, { fs = 44100, duration = 1, amp = 0.7, damp
 	let N = Math.max(2, Math.round(fs / freq))
 	let buf = new Float32Array(N)
 	let s = seed >>> 0 || 1
-	for (let i = 0; i < N; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; buf[i] = amp * (s / 0x3fffffff - 1) }
+	for (let i = 0; i < N; i++) { s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff; buf[i] = amp * (s / 0x3fffffff - 1) } // imul: exact mod 2³²
 	let n = Math.round(duration * fs)
 	let out = new Float32Array(n)
 	let idx = 0

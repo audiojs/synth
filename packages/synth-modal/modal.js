@@ -102,7 +102,7 @@ export default function modal (freq = 440, {
 		let m = Math.max(1, Math.round(0.005 * fs)) // 5ms seeded burst
 		exc = new Float32Array(m)
 		let s = seed >>> 0 || 1
-		for (let i = 0; i < m; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; exc[i] = s / 0x3fffffff - 1 }
+		for (let i = 0; i < m; i++) { s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff; exc[i] = s / 0x3fffffff - 1 } // imul: exact mod 2³²
 	} else exc = exciter // caller-supplied Float32Array, fed through the bank as-is
 
 	for (let m of resolved) {
