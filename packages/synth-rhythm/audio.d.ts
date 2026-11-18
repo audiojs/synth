@@ -10,7 +10,7 @@ type Process = (inputs: Float32Array[][], outputs: Float32Array[][], params: Liv
 
 /** Chainable-host options for 'rhythm' */
 export interface RhythmOptions {
-  /** 20..300 (default 120) */
+  /** 20..300 bpm (default 120) */
   "bpm"?: Auto
   /** 1..12 (default 4) */
   "beats"?: Auto
@@ -29,7 +29,7 @@ export declare const rhythm: {
   channels: {"inputs":[],"outputs":"any"}
   streaming: false
   params: {
-    /** 20..300 (default 120) */
+    /** 20..300 bpm (default 120) */
     "bpm": { type: "number", default: 120 }
     /** 1..12 (default 4) */
     "beats": { type: "number", default: 4 }

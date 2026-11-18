@@ -9,6 +9,9 @@
     ".": "./wavetable.js",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "prepublishOnly": "node ../../../compile/tools/tested.js"
+  },
   "files": [
     "wavetable.js",
     "wavetable.d.ts"

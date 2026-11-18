@@ -10,12 +10,22 @@
       "types": "./dx7.d.ts",
       "default": "./dx7.js"
     },
+    "./audio": {
+      "types": "./audio.d.ts",
+      "default": "./audio.js"
+    },
     "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "node test.js",
+    "prepublishOnly": "node ../../../compile/tools/tested.js"
   },
   "files": [
     "dx7.js",
     "sysex.js",
     "dx7.d.ts",
+    "audio.js",
+    "audio.d.ts",
     "LICENSE",
     "NOTICE"
   ],
@@ -41,6 +51,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "audio": "./audio.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/audiojs/synth.git",

@@ -19,7 +19,7 @@ export const voice = (ctx) => {
 		const evs = ctx.events || []
 		const on = new Map()
 		const render = (slot, endSample) => {
-			const freq = midiToHz(slot.pitch)
+			const freq = midiToHz(slot.midi)
 			const dur = Math.max(0.01, (endSample - slot.time) / sr)
 			const d = voiceFn(freq, {
 				fs: sr, duration: dur,
@@ -33,7 +33,7 @@ export const voice = (ctx) => {
 		}
 		for (let i = 0; i < evs.length; i++) {
 			const e = evs[i]
-			if (e.kind === 'on') on.set(e.id, { time: e.time, pitch: e.pitch, velocity: e.velocity })
+			if (e.kind === 'on') on.set(e.id, { time: e.time, midi: e.midi, velocity: e.velocity })
 			else if (e.kind === 'off' && on.has(e.id)) { render(on.get(e.id), e.time); on.delete(e.id) }
 		}
 		for (const slot of on.values()) render(slot, n)  // unterminated notes ring to the end

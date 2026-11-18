@@ -38,7 +38,45 @@ Output keeps MSFA's scale, 1.0 = its int16 full scale: one carrier at output lev
 **Beyond upstream:** the voice's transpose is applied (MSFA ignores it); LFO phase, sample-and-hold state and feedback history start at 0 (upstream leaves them uninitialized).<br>
 **Not modeled, as in upstream:** amplitude modulation (AMS, LFO AMD); oscillator key sync off (every note restarts its operators at phase 0); mod wheel, breath, foot and aftertouch routing; pitch bend (held at center); portamento; mono mode; the DX7's DAC and output filter.
 
-**Raw engine.** `render(patch, { note, velocity (0..127), fs, duration, release, msfa })` returns whole 64-sample blocks of int32, 2^28 = full scale. `new Voice(patch, opts)` streams them: `block(out)` adds 64 samples into an `Int32Array(64)`, `keyup()` releases, `done` reports the release finished. Measured CPU real-time factor 6–7·10⁻⁴ per voice in Node on one core (Apple M4 Max): about 1500 voices in real time, or 25 hours of rendered notes per CPU-minute.
+**Raw engine.** `render(patch, { note, velocity (0..127), fs, duration, release, msfa })` returns whole 64-sample blocks of int32, 2^28 = full scale. `new Voice(patch, opts)` streams them: `block(out)` adds 64 samples into an `Int32Array(64)`, `keyup()` releases, `done` reports the release finished, `silent` that every carrier has settled below the gain the engine skips an operator at, so every later block adds 0. `init(patch, note, velocity)` starts another note on the same voice, allocating nothing, and it sounds as a new `Voice` would, feedback history and LFO from 0. `releaseTime(patch, { fs, msfa })` is the most seconds a note of the voice sounds after the block its key goes up before: MIDI keys 0..127 through its transpose, velocity 127, released at its envelopes' highest level; `Infinity` where a carrier's L4 holds it audible. Measured CPU real-time factor 6–7·10⁻⁴ per voice in Node on one core (Apple M4 Max): about 1500 voices in real time, or 25 hours of rendered notes per CPU-minute.
+
+**Live instrument.** `import { dx7 } from '@audio/synth-dx7/audio'` is a processor of the audio.js contract 1.0: notes in, no input bus, the mono voice on every output channel, streaming. A 1.0 host gives it note events and it plays them as they arrive.
+
+- Sixteen voices, the DX7's polyphony (DX7 Operating Manual, specifications; MSFA wiki Dx7Hardware, "6 operators x 16 voice polyphony"; MSFA `synth_unit.h`, `max_active_notes = 16`), made once and reused: `process` allocates nothing.
+- Each note runs the engine's 64-sample blocks from its own note-on frame, so it is `Voice`'s render of that note sample for sample, from the frame it starts at, whatever the call sizes. At 49096 Hz that is upstream MSFA's.
+- An off releases at its voice's next 64-sample step, at most 63 frames (1.4 ms at 44.1 kHz) after it: the engine's envelopes move once a step.
+- A new note takes the voice MSFA's `SynthUnit::AllocateNote` gives: counting from the voice after the last one taken, the first whose key is up, its release cut if it still rings. With all 16 keys held MSFA drops the new note; here the oldest held note gives way instead (our choice).
+- Velocity 0..1 reaches the engine as MIDI velocity `round(v·127)`: 0.5 plays as 64. A fractional `midi` plays between keys: the engine's log-frequency line runs through the fraction, level and rate scaling take the nearest key. The voice's transpose applies.
+- Each note starts its own LFO, as each `Voice` does; the DX7 has one for the instrument.
+- A released voice that is `silent` stops computing; its output is exactly 0 from there on.
+
+The parameters are the voice's 145 sounding bytes in VCED order: `op6Rate1` … `op6Detune`, the same for `op5` to `op1`, then the voice's 19. Numbers step by 1; `algorithm`, `opNDetune` and `transpose` read as the DX7 displays them, the rest as the byte. Defaults are INIT VOICE (`INIT`).
+
+| Parameter | Values |
+|---|---|
+| `opNRate1`–`4`, `opNLevel1`–`4` | 0..99, the operator's EG |
+| `opNBreakPoint` | 0..99 (A-1..C8) |
+| `opNLeftDepth`, `opNRightDepth` | 0..99 |
+| `opNLeftCurve`, `opNRightCurve` | `-lin` `-exp` `+exp` `+lin` |
+| `opNRateScaling`, `opNVelocitySens` | 0..7 |
+| `opNAmpModSens` | 0..3, not modeled |
+| `opNOutputLevel` | 0..99 |
+| `opNMode` | `ratio` `fixed` |
+| `opNCoarse`, `opNFine` | 0..31, 0..99 |
+| `opNDetune` | −7..+7 |
+| `pitchRate1`–`4`, `pitchLevel1`–`4` | 0..99, the pitch EG |
+| `algorithm` | 1..32 |
+| `feedback`, `pitchModSens` | 0..7 |
+| `oscKeySync` | switch, not modeled |
+| `lfoSpeed`, `lfoDelay`, `lfoPitchDepth` | 0..99 |
+| `lfoAmpDepth` | 0..99, not modeled |
+| `lfoKeySync` | switch |
+| `lfoWave` | `triangle` `saw-down` `saw-up` `square` `sine` `sample-hold` |
+| `transpose` | −24..+24 st, C1..C5 with C3 as 0 |
+
+The engine reads all 145 as a note starts (MSFA `Dx7Note::init`): a value changed while notes sound applies from the next note on, and none applies at once.
+
+`tail` is the longest a released note rings to exact silence at the values in force: `releaseTime` plus the 63 frames an off may wait, 7.2 ms for INIT VOICE at 44.1 kHz, `Infinity` when a carrier's L4 holds it audible. `latency` is 0: a note's first sample, its operators at phase 0, lands on the note's frame (measured: the INIT sine's phase is 0 there).
 
 **Sysex.** `parse(bytes)` reads 32-voice cartridges (VMEM: F0 43 0n 09 20 00, 4104 bytes), single voices (VCED: F0 43 0n 00 01 1B, 163 bytes), any sequence of these, or headerless 4096-, 155- or 128-byte data, and returns `[{ name, patch }]`. Values beyond the documented ranges are clamped; checksums are not enforced, since many circulating cartridges carry wrong ones. A cartridge's byte count written as a plain 16-bit number (10 00) reads as 4096 like the manual's 7-bit 20 00, and other messages in a file (a DX7II performance, another maker's data) are skipped. `unpack(bulk)` converts one packed 128-byte voice, `name(patch)` reads its name, `INIT` is the DX7's initialized voice, `MAX` holds each parameter's maximum (minimum 0): the bounds for sound matching over a voice. Bytes 145–154 are the name and make no sound, so a search leaves them out:
 
@@ -51,7 +89,7 @@ let r = match(p => dx7(220, { patch: voice(p) }), target,
 
 **Factory voices** are not included: Yamaha's ROM cartridges circulate widely, but their redistribution terms are unclear. Load your own `.syx`.
 
-**Use when:** rendering DX7 voices from sysex identically to MSFA: preset libraries, training data for FM sound matching, a recognized preset as the seed of [`@audio/neural-synth`](https://github.com/audiojs/neural)'s `match`.<br>
+**Use when:** rendering DX7 voices from sysex identically to MSFA: preset libraries, training data for FM sound matching, a recognized preset as the seed of [`@audio/neural-synth`](https://github.com/audiojs/neural)'s `match`; the DX7 played live in a contract 1.0 host, its voice set by parameters.<br>
 **Not for:** a free-form FM operator stack (use [`synth-fm`](https://github.com/audiojs/synth/tree/main/packages/synth-fm)), or voices that depend on amplitude modulation or controller routing.
 
 ## References

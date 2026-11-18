@@ -38,6 +38,8 @@ osc(440, { type: 'sawtooth', detune: -5 })   // → Float32Array
 | `wave` | — | Custom waveform fn `t => v`, overrides `type` |
 | `fs` | `44100` | Sample rate |
 
+**Live oscillator.** `import { osc } from '@audio/synth-osc/audio'` is a processor of the audio.js contract 1.0: a generator (no input bus), with `freq`, `detune`, `gain` and `type` live. A moving `gain` follows the host's ramp sample by sample, 32 frames behind it, so it does not step at the host's calls; a held one is the value itself. The two 64 KB tables the band-limited waves read are built with the first instance, once for the module, so no block allocates whatever wave it switches to; `osc()` and `wave()` build them at their first band-limited sample.
+
 **Use when:** the base oscillator under [`synth-voice`](https://github.com/audiojs/synth/tree/main/packages/synth-voice) and [`synth-poly`](https://github.com/audiojs/synth/tree/main/packages/synth-poly), or any test tone with a classic waveform.
 
 ---

@@ -4,15 +4,34 @@
 // MSFA patch.cc UnpackPatch (Copyright 2012 Google Inc., Apache License 2.0), plus clamping
 // to the documented parameter ranges, which leaves valid data unchanged.
 
-// VCED parameter maxima (minimum 0), in VCED order: operators OP6..OP1, 21 each, then globals;
-// the knob bounds for sound matching over the 155 voice parameters.
-const OP_MAX = [99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 3, 3, 7, 3, 7, 99, 1, 31, 99, 14]
-//             R1  R2  R3  R4  L1  L2  L3  L4  BP  LD  RD LC RC RS AMS KVS OL M CRS FINE DET
-const GLOBAL_MAX = [99, 99, 99, 99, 99, 99, 99, 99, 31, 7, 1, 99, 99, 99, 99, 1, 5, 7, 48]
-//                  PR1-4           PL1-4          ALG FB OKS LFS LFD PMD AMD SYNC WAVE PMS TRNP
+// VCED parameters in VCED order: an operator's 21, for OP6..OP1, then the voice's 19. A row is a
+// name, then the maximum (minimum 0) or the manual's names for the values 0, 1, … (lowercase,
+// dashed: -LIN is '-lin', SAW DOWN 'saw-down'); then what the DX7's display adds to the byte
+// (algorithm 1..32, detune −7..+7, transpose C1..C5 as −24..+24 semitones from C3) and a unit.
+const CURVES = ['-lin', '-exp', '+exp', '+lin']
+export const SWITCH = ['off', 'on']
+const OP = [
+	['rate1', 99], ['rate2', 99], ['rate3', 99], ['rate4', 99], ['level1', 99], ['level2', 99], ['level3', 99], ['level4', 99],
+	['breakPoint', 99], ['leftDepth', 99], ['rightDepth', 99], ['leftCurve', CURVES], ['rightCurve', CURVES],
+	['rateScaling', 7], ['ampModSens', 3], ['velocitySens', 7], ['outputLevel', 99],
+	['mode', ['ratio', 'fixed']], ['coarse', 31], ['fine', 99], ['detune', 14, -7],
+]
+const VOICE = [
+	['pitchRate1', 99], ['pitchRate2', 99], ['pitchRate3', 99], ['pitchRate4', 99],
+	['pitchLevel1', 99], ['pitchLevel2', 99], ['pitchLevel3', 99], ['pitchLevel4', 99],
+	['algorithm', 31, 1], ['feedback', 7], ['oscKeySync', SWITCH],
+	['lfoSpeed', 99], ['lfoDelay', 99], ['lfoPitchDepth', 99], ['lfoAmpDepth', 99], ['lfoKeySync', SWITCH],
+	['lfoWave', ['triangle', 'saw-down', 'saw-up', 'square', 'sine', 'sample-hold']], ['pitchModSens', 7], ['transpose', 48, -24, 'st'],
+]
+/** the 145 sounding parameters, byte by byte: [name ('op6Rate1' … 'transpose'), max or value names, display shift, unit] */
+export const PARAMS = [
+	...[6, 5, 4, 3, 2, 1].flatMap(n => OP.map(([k, r, s = 0]) => [`op${n}${k[0].toUpperCase()}${k.slice(1)}`, r, s])),
+	...VOICE.map(([k, r, s = 0, u]) => [k, r, s, u]),
+]
+
+// The maximum of each byte (minimum 0): the knob bounds for sound matching over the 155 voice parameters.
 export const MAX = new Uint8Array(155)
-for (let op = 0; op < 6; op++) MAX.set(OP_MAX, op * 21)
-MAX.set(GLOBAL_MAX, 126)
+PARAMS.forEach(([, r], i) => MAX[i] = typeof r === 'number' ? r : r.length - 1)
 MAX.fill(127, 145) // voice name, ASCII
 
 const clamp = (v) => { for (let i = 0; i < 155; i++) if (v[i] > MAX[i]) v[i] = MAX[i]; return v }

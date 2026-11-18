@@ -16,6 +16,8 @@ Morphing wavetable oscillator (WaveEdit class): scans a position 0..1 through a 
 wavetable(220, { tables: [sine, saw, square], position: t => t })   // → Float32Array
 ```
 
+`tables` must be a non-empty array of non-empty `Float32Array`s, each holding one cycle of its wave; lengths may differ, as each table is read at its own length, wrapping around. Position 0 plays the first table, 1 the last, `k / (tables.length - 1)` table `k` alone, and a position between two of these crossfades that pair. One table is a valid bank: it plays as is at any position.
+
 | Param | Default | |
 |---|---|---|
 | `freq` | — | Hz (positional) |

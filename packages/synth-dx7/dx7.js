@@ -16,7 +16,8 @@
 // Changes, 2026, audiojs: translated to JavaScript from app/src/main/jni/{sin,exp2,freqlut,
 // env,pitchenv,lfo,fm_op_kernel,fm_core,dx7note}.cc (the portable fixed-point path, not the
 // AArch64 NEON float kernel); int64 products computed exactly in double precision; LFO phase,
-// sample-and-hold state and feedback history start at 0 (upstream leaves them uninitialized);
+// sample-and-hold state and feedback history start at 0 (upstream leaves them uninitialized), and
+// again for each note a reused Voice starts (upstream keeps the last note's feedback history);
 // libm-derived constants pinned as literals; amplitude-EG steps scaled to the DX7's own sample
 // clock (49096 Hz) unless { msfa: true }; the dx7() wrapper applies the voice's transpose.
 
@@ -92,12 +93,30 @@ const freqLookup = (lut, logfreq) => {
 const LEVELLUT = [0, 5, 9, 13, 17, 20, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 43, 45, 46]
 const scaleOutLevel = (l) => l >= 20 ? 28 + l : LEVELLUT[l]
 
+// Env::advance: a segment's target level, and its step per block
+function envTarget (level, outlevel) {
+	let actual = ((scaleOutLevel(level) >> 1) << 6) + outlevel - 4256
+	return (actual < 16 ? 16 : actual) << 16
+}
+function envInc (rate, rateScaling, incScale) {
+	let qrate = ((rate * 41) >> 6) + rateScaling
+	if (qrate > 63) qrate = 63
+	let inc = (4 + (qrate & 3)) << (2 + LG_N + (qrate >> 2))
+	return incScale === 1 ? inc : Math.round(inc * incScale)
+}
+
 class Env {
-	constructor (rates, levels, outlevel, rateScaling, incScale) {
-		this.rates = rates; this.levels = levels; this.outlevel = outlevel
-		this.rateScaling = rateScaling; this.incScale = incScale
+	constructor (incScale) {
+		this.rates = [0, 0, 0, 0]; this.levels = [0, 0, 0, 0]; this.outlevel = 0
+		this.rateScaling = 0; this.incScale = incScale
 		this.level = 0; this.target = 0; this.inc = 0; this.ix = 0
 		this.rising = false; this.down = true
+	}
+	// Env::init: rates and levels from the operator's patch bytes at offset o
+	init (patch, o, outlevel, rateScaling) {
+		for (let i = 0; i < 4; i++) { this.rates[i] = patch[o + i]; this.levels[i] = patch[o + 4 + i] }
+		this.outlevel = outlevel; this.rateScaling = rateScaling
+		this.level = 0; this.down = true
 		this.advance(0)
 	}
 	sample () {
@@ -120,13 +139,9 @@ class Env {
 	advance (ix) {
 		this.ix = ix
 		if (ix < 4) {
-			let actual = ((scaleOutLevel(this.levels[ix]) >> 1) << 6) + this.outlevel - 4256
-			this.target = (actual < 16 ? 16 : actual) << 16
+			this.target = envTarget(this.levels[ix], this.outlevel)
 			this.rising = this.target > this.level
-			let qrate = ((this.rates[ix] * 41) >> 6) + this.rateScaling
-			if (qrate > 63) qrate = 63
-			let inc = (4 + (qrate & 3)) << (2 + LG_N + (qrate >> 2))
-			this.inc = this.incScale === 1 ? inc : Math.round(inc * this.incScale)
+			this.inc = envInc(this.rates[ix], this.rateScaling, this.incScale)
 		}
 	}
 	// true once the envelope sits at its final level with the key up (nothing left to do)
@@ -150,10 +165,15 @@ const PITCH_LEVEL = [
 ]
 
 class PitchEnv {
-	constructor (rates, levels, unit) {
-		this.rates = rates; this.levels = levels; this.unit = unit
-		this.level = PITCH_LEVEL[levels[3]] << 19
-		this.target = 0; this.inc = 0; this.ix = 0; this.rising = false; this.down = true
+	constructor (unit) {
+		this.rates = [0, 0, 0, 0]; this.levels = [0, 0, 0, 0]; this.unit = unit
+		this.level = 0; this.target = 0; this.inc = 0; this.ix = 0; this.rising = false; this.down = true
+	}
+	// PitchEnv::set: rates and levels from the voice's patch bytes 126..133
+	init (patch) {
+		for (let i = 0; i < 4; i++) { this.rates[i] = patch[126 + i]; this.levels[i] = patch[130 + i] }
+		this.level = PITCH_LEVEL[this.levels[3]] << 19
+		this.down = true
 		this.advance(0)
 	}
 	sample () {
@@ -184,13 +204,19 @@ class PitchEnv {
 // lfo.cc: one LFO per voice render (the DX7 has one per instrument; MSFA shares one across
 // notes). Speed, delay and six waveforms; output Q24 in 0..1.
 class Lfo {
-	// p: [speed, delay, pmd, amd, sync, wave] (VCED 137..142); unit = 64·25190424/fs
-	constructor (p, unit) {
-		let rate = p[0]
+	// unit = 64·25190424/fs
+	constructor (unit) {
+		this.unit = unit; this.delta = 0; this.delayinc = 0; this.delayinc2 = 0; this.wave = 0; this.sync = false
+		this.phase = 0; this.rand = 0; this.delaystate = 0
+	}
+	// Lfo::reset from the patch's speed, delay, pmd, amd, sync, wave (VCED 137..142); phase and
+	// sample-and-hold state start at 0, as this voice's own
+	reset (patch) {
+		let unit = this.unit, rate = patch[137]
 		let sr = rate === 0 ? 1 : (165 * rate) >> 6
 		sr *= sr < 160 ? 11 : 11 + ((sr - 160) >> 4)
 		this.delta = (unit * sr) >>> 0
-		let a = 99 - p[1]
+		let a = 99 - patch[138]
 		if (a === 99) this.delayinc = this.delayinc2 = 0xffffffff
 		else {
 			a = (16 + (a & 15)) << (1 + (a >> 4))
@@ -198,7 +224,7 @@ class Lfo {
 			a &= 0xff80
 			this.delayinc2 = (unit * (a < 0x80 ? 0x80 : a)) >>> 0
 		}
-		this.wave = p[5]; this.sync = p[4] !== 0
+		this.wave = patch[142]; this.sync = patch[141] !== 0
 		this.phase = 0; this.rand = 0; this.delaystate = 0
 	}
 	sample () {
@@ -285,6 +311,12 @@ const ALGORITHMS = [
 	[0xc1, 0x14, 0x04, 0x04, 0x04, 0x04], [0xc4, 0x04, 0x04, 0x04, 0x04, 0x04],
 ]
 const LEVEL_THRESH = 1120 // operators below this gain (both block ends) are skipped
+// the lowest EG level whose gain reaches LEVEL_THRESH (exp2 never falls as its argument rises)
+const SILENT_LEVEL = (() => {
+	let lo = 0, hi = 1 << 28
+	while (lo < hi) { let m = (lo + hi) >> 1; if (exp2(m - 234881024) >= LEVEL_THRESH) hi = m; else lo = m + 1 }
+	return lo
+})()
 
 // dx7note.cc tables. coarse → log2 ratio in Q24 (coarse 0 = ×0.5); fine → Q24 of
 // log2(1 + fine/100), floor(24204406.323123·ln(1 + 0.01·fine) + 0.5), pinned.
@@ -344,6 +376,13 @@ function scaleLevel (note, bp, ld, rd, lc, rc) {
 	let offset = note - bp - 17
 	return offset >= 0 ? scaleCurve((offset / 3) | 0, rd, rc) : scaleCurve((-offset / 3) | 0, ld, lc)
 }
+// Dx7Note::init: the output level of the operator at patch offset o, keyboard level scaling and velocity applied
+function outLevel (patch, o, key, velocity) {
+	let out = scaleOutLevel(patch[o + 16]) + scaleLevel(key, patch[o + 8], patch[o + 9], patch[o + 10], patch[o + 11], patch[o + 12])
+	out = (out > 127 ? 127 : out) << 5
+	out += scaleVelocity(velocity, patch[o + 15])
+	return out < 0 ? 0 : out
+}
 
 // floor(a·b / 2^39) for 0 ≤ a < 2^32, |b| < 2^31, exact: the int64 product of Dx7Note::compute
 function mulShr39 (a, b) {
@@ -358,38 +397,43 @@ function mulShr39 (a, b) {
 export class Voice {
 	constructor (patch, { note = 60, velocity = 100, fs = 44100, msfa = false } = {}) {
 		if (!(fs > 16384)) throw new RangeError('dx7: fs must exceed 16384 Hz (MSFA frequency table range)')
-		let key = Math.round(note)
-		// integer notes take MSFA's exact path; fractional ones interpolate the same line
-		let logfreq = Math.abs(note - key) < 1e-9 ? noteLogfreq(key) : Math.round(50857777 + 1398101 * note)
 		let incScale = msfa ? 1 : DX7_FS / fs
 		this.lut = freqTable(fs)
 		this.env = []; this.ops = []; this.base = new Int32Array(6)
 		for (let op = 0; op < 6; op++) {
-			let o = op * 21
-			let out = scaleOutLevel(patch[o + 16]) + scaleLevel(key, patch[o + 8], patch[o + 9], patch[o + 10], patch[o + 11], patch[o + 12])
-			out = (out > 127 ? 127 : out) << 5
-			out += scaleVelocity(velocity, patch[o + 15])
-			this.env.push(new Env(
-				[patch[o], patch[o + 1], patch[o + 2], patch[o + 3]],
-				[patch[o + 4], patch[o + 5], patch[o + 6], patch[o + 7]],
-				out < 0 ? 0 : out, scaleRate(key, patch[o + 13]), incScale))
-			this.base[op] = oscFreq(logfreq, patch[o + 17], patch[o + 18], patch[o + 19], patch[o + 20])
+			this.env.push(new Env(incScale))
 			this.ops.push({ phase: 0, freq: 0, gain0: 0, gain1: 0 })
 		}
-		this.pitchenv = new PitchEnv(
-			[patch[126], patch[127], patch[128], patch[129]], [patch[130], patch[131], patch[132], patch[133]],
-			Math.trunc(N * (1 << 24) / (21.3 * fs) + 0.5))
+		this.pitchenv = new PitchEnv(Math.trunc(N * (1 << 24) / (21.3 * fs) + 0.5))
+		this.fb = new Int32Array(2)
+		this.bus = [null, new Int32Array(N), new Int32Array(N)]
+		this.has = new Uint8Array(3)
+		this.lfo = new Lfo(Math.trunc(N * 25190424 / fs + 0.5))
+		this.init(patch, note, velocity)
+	}
+
+	/**
+	 * start a note on this voice as a new Voice would (Dx7Note::init, the LFO's reset and keydown),
+	 * allocating nothing: the voice of the note before is reused whole
+	 */
+	init (patch, note, velocity) {
+		let key = Math.round(note)
+		// integer notes take MSFA's exact path; fractional ones interpolate the same line
+		let logfreq = Math.abs(note - key) < 1e-9 ? noteLogfreq(key) : Math.round(50857777 + 1398101 * note)
+		for (let op = 0; op < 6; op++) {
+			let o = op * 21, p = this.ops[op]
+			this.env[op].init(patch, o, outLevel(patch, o, key, velocity), scaleRate(key, patch[o + 13]))
+			this.base[op] = oscFreq(logfreq, patch[o + 17], patch[o + 18], patch[o + 19], patch[o + 20])
+			p.phase = 0; p.freq = 0; p.gain0 = 0; p.gain1 = 0
+		}
+		this.pitchenv.init(patch)
 		this.alg = ALGORITHMS[patch[134]]
 		this.fbShift = patch[135] ? 8 - patch[135] : 16
 		this.pmd = (patch[139] * 165) >> 6
 		this.pms = PITCHMODSENS[patch[143] & 7]
-		this.fb = new Int32Array(2)
-		this.bus = [null, new Int32Array(N), new Int32Array(N)]
-		this.has = new Uint8Array(3)
-		this.lfo = new Lfo([patch[137], patch[138], patch[139], patch[140], patch[141], patch[142]],
-			Math.trunc(N * 25190424 / fs + 0.5))
+		this.fb[0] = 0; this.fb[1] = 0
+		this.lfo.reset(patch)
 		this.lfo.keydown()
-		this.carriers = this.alg.map(f => (f & 3) === 0)
 	}
 
 	/** add one 64-sample block of int32 output into `out` (Int32Array(64)) */
@@ -433,8 +477,39 @@ export class Voice {
 
 	/** key is up and every carrier's EG has reached its final level */
 	get done () {
-		return this.env.every((e, op) => !this.carriers[op] || e.done)
+		for (let op = 0; op < 6; op++) if ((this.alg[op] & 3) === 0 && !this.env[op].done) return false
+		return true
 	}
+
+	/** done, and every carrier's final gain below the one FmCore skips an operator at: every later block adds 0 */
+	get silent () {
+		for (let op = 0; op < 6; op++) if ((this.alg[op] & 3) === 0 && (!this.env[op].done || this.ops[op].gain1 >= LEVEL_THRESH)) return false
+		return true
+	}
+}
+
+/**
+ * Seconds a note of `patch` can sound after the block its key goes up before (Voice.keyup), at
+ * most: MIDI keys 0..127 through the voice's transpose, velocity 127, the key released at the
+ * envelopes' highest level, until every carrier's gain is below the one FmCore skips an operator
+ * at. Infinity where a carrier's final level (L4) holds it above that.
+ */
+export function releaseTime (patch, { fs = 44100, msfa = false } = {}) {
+	let alg = ALGORITHMS[patch[134]], incScale = msfa ? 1 : DX7_FS / fs, blocks = 0
+	for (let op = 0; op < 6; op++) {
+		if (alg[op] & 3) continue // a modulator: silent once the carriers are
+		let o = op * 21
+		for (let midi = 0; midi < 128; midi++) {
+			let key = midi + patch[144] - 24, out = outLevel(patch, o, key, 127)
+			if (envTarget(patch[o + 7], out) >= SILENT_LEVEL) return Infinity
+			let top = Math.max(envTarget(patch[o + 4], out), envTarget(patch[o + 5], out), envTarget(patch[o + 6], out))
+			if (top < SILENT_LEVEL) continue
+			// a block adds while its starting level is at SILENT_LEVEL or above; the release takes inc a block off it
+			let n = Math.floor((top - SILENT_LEVEL) / envInc(patch[o + 3], scaleRate(key, patch[o + 13]), incScale)) + 1
+			if (n > blocks) blocks = n
+		}
+	}
+	return blocks * N / fs
 }
 
 /**

@@ -23,7 +23,7 @@ export const rhythm = (ctx) => {
 rhythm.channels = { inputs: [], outputs: 'any' }
 rhythm.streaming = false
 rhythm.params = {
-	bpm:        { type: 'number', min: 20, max: 300, default: 120 },
+	bpm:        { type: 'number', min: 20, max: 300, default: 120, unit: 'bpm' },
 	beats:      { type: 'number', min: 1, max: 12, default: 4, step: 1 },
 	freq:       { type: 'number', min: 200, max: 4000, default: 1000, unit: 'Hz' },
 	accentFreq: { type: 'number', min: 200, max: 6000, default: 1500, unit: 'Hz' },

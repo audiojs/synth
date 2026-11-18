@@ -17,11 +17,11 @@ export const tonewheel = (ctx) => (inputs, outputs, params) => {
 		if (e.kind === 'on') on.set(e.id, e)
 		else if (e.kind === 'off' && on.has(e.id)) {
 			const s = on.get(e.id)
-			notes.push({ time: s.time / sr, midi: s.pitch, duration: (e.time - s.time) / sr })
+			notes.push({ time: s.time / sr, midi: s.midi, duration: (e.time - s.time) / sr })
 			on.delete(e.id)
 		}
 	}
-	for (const s of on.values()) notes.push({ time: s.time / sr, midi: s.pitch, duration: (n - s.time) / sr })
+	for (const s of on.values()) notes.push({ time: s.time / sr, midi: s.midi, duration: (n - s.time) / sr })
 	const keys = notes.filter(k => k.midi >= LOWEST && k.midi <= HIGHEST && k.duration > 0)
 	for (const o of out) o.fill(0)
 	if (!keys.length) return

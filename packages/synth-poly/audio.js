@@ -19,11 +19,11 @@ export const poly = (ctx) => {
 			if (e.kind === 'on') on.set(e.id, e)
 			else if (e.kind === 'off' && on.has(e.id)) {
 				const s = on.get(e.id)
-				notes.push({ time: s.time / sr, midi: s.pitch, duration: (e.time - s.time) / sr, velocity: s.velocity ?? 1 })
+				notes.push({ time: s.time / sr, midi: s.midi, duration: (e.time - s.time) / sr, velocity: s.velocity ?? 1 })
 				on.delete(e.id)
 			}
 		}
-		for (const s of on.values()) notes.push({ time: s.time / sr, midi: s.pitch, duration: (n - s.time) / sr, velocity: s.velocity ?? 1 })
+		for (const s of on.values()) notes.push({ time: s.time / sr, midi: s.midi, duration: (n - s.time) / sr, velocity: s.velocity ?? 1 })
 		const type = params.type, amp = params.amp[0]
 		const d = polyFn(notes, {
 			fs: sr, duration: n / sr,

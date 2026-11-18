@@ -218,11 +218,133 @@ test('osc — band-limited: no aliases below 16 kHz, harmonics at their ideal le
 
 test('osc atom — band-limited as osc(), in any block size', async () => {
 	let { osc: atom } = await import('@audio/synth-osc/audio')
-	let p = atom({ sampleRate: 44100 }), n = 1 << 16, x = new Float32Array(n + 1000), prm = { freq: [3520], detune: [0], gain: [1], type: 'square' }
+	let p = atom({ sampleRate: 44100, maxBlockSize: 300 }), n = 1 << 16, x = new Float32Array(n + 1000), prm = { freq: [3520], detune: [0], gain: [1], type: 'square' }
 	for (let i = 0, b = 1; i < x.length; i += b, b = 1 + (b * 7) % 300) p([], [[x.subarray(i, Math.min(x.length, i + b))]], prm)
 	ok(lines(x, 3520, 44100).alias < -90, 'no aliases')
 	let o = osc(3520, { type: 'square', duration: x.length / 44100, amp: 1 })
 	ok(x.every((v, i) => Math.abs(v - o[i]) < 1e-6), 'same samples as osc()')
+})
+
+import { execFileSync } from 'node:child_process'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// CONTRACT 1.0, process: "Allocate nothing". A warm process() in a child Node with a 1 MB young generation, counted over
+// 2^16 blocks of 8 frames (a collection is 1 MB, so 16 bytes a block show), under the validator's flags: without
+// concurrent recompilation V8 inlined neither blep's sums nor `wave` into the loop for square and triangle, and boxed
+// their numbers. Each wave type, and each param moving every block, one case after another in one process. Where V8
+// boxes a number moves with its version: measured on Node 20, 22 and 25
+test('osc atom: allocates nothing in process, at each wave type and as its params move', { skip: +process.versions.node.split('.')[0] < 20 && 'measured on Node 20 and later', timeout: 120000 }, () => {
+	let cases = [[{}], [{ type: 'sawtooth' }], [{ type: 'square' }], [{ type: 'triangle' }], [{}, 'freq', 100, 5000], [{ type: 'square' }, 'detune', -1200, 1200],
+		[{ type: 'triangle' }, 'gain', 0, 1], [{}, 'type', 'sine', 'square'], [{}, 'type', 'triangle', 'sawtooth']]
+	let child = `
+		import { osc } from ${JSON.stringify(import.meta.resolve('@audio/synth-osc/audio'))}
+		import { PerformanceObserver } from 'node:perf_hooks'
+		let counts = []
+		for (let [set, key, a, b] of JSON.parse(process.argv[1])) {
+			let given = () => Object.fromEntries(Object.entries(osc.params).map(([k, s]) => [k, s.type === 'number' ? Float32Array.of(set[k] ?? s.default) : set[k] ?? s.default]))
+			let params = given(), proc = osc({ sampleRate: 48000, maxBlockSize: 128, maxChannels: 1, params: given() }), ins = [], out = [[new Float32Array(8)]]
+			let v = typeof a === 'number' ? params[key] : null, to = Float32Array.of(a ?? 0, b ?? 0)
+			let move = !key ? i => {} : v ? i => { v[0] = to[i & 1] } : i => { params[key] = i & 1 ? b : a }
+			let run = n => { for (let i = 0; i < n; i++) { move(i); proc(ins, out, params) } }
+			run(1 << 15); globalThis.gc()
+			let gcs = 0, seen = new PerformanceObserver(list => { gcs += list.getEntries().length }); seen.observe({ entryTypes: ['gc'] })
+			run(1 << 16); await new Promise(done => setTimeout(done, 20)); seen.disconnect()
+			counts.push(gcs)
+		}
+		console.log(JSON.stringify(counts))`
+	let counts = JSON.parse(execFileSync(process.execPath, ['--max-semi-space-size=1', '--expose-gc', '--no-concurrent-recompilation', '--input-type=module', '-e', child, JSON.stringify(cases)], { encoding: 'utf8' }))
+	cases.forEach(([set, key, a, b], k) => is(counts[k], 0, `${JSON.stringify(set)}${key ? `, ${key} ${a} ↔ ${b} each block` : ''}: ${counts[k]} collections in 2^16 blocks`))
+})
+
+// CONTRACT 1.0, process: "Allocate nothing", and Lifecycle: the processor "may allocate and take its time". A fresh
+// module's first instance, built at sine, then called 3 times at each wave of `order`: the bytes of typed-array stores
+// (V8's arrayBuffers, after two collections) its factory made, and each call made. In a child: a module builds its
+// tables once, and this one's tests have built them. Two collections: the first can leave the stores Node's module
+// loader read audio.js and blep.js into (20 children in 210 on Node 25), a second frees them, and freed across the
+// factory they take its reading under the tables' size
+function oscStores (order) {
+	let child = `
+		import { osc } from ${JSON.stringify(import.meta.resolve('@audio/synth-osc/audio'))}
+		let ab = () => (globalThis.gc(), globalThis.gc(), process.memoryUsage().arrayBuffers), given = () => ({ freq: Float32Array.of(440), detune: Float32Array.of(0), gain: Float32Array.of(0.8), type: 'sine' })
+		let a = ab(), proc = osc({ sampleRate: 48000, maxBlockSize: 128, maxChannels: 1, params: given() }), built = ab() - a, live = given(), out = [[new Float32Array(128)]], calls = []
+		for (let type of ${JSON.stringify(order)}) for (let i = 0; i < 3; i++) { live.type = type; let b = ab(); proc([], out, live); calls.push(ab() - b) }
+		console.log(JSON.stringify({ built, calls }))`
+	return JSON.parse(execFileSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', child], { encoding: 'utf8' }))
+}
+test('osc atom: the band-limited tables are built with the instance, once for the module; no call makes a store, whatever wave comes first (was: 131088 B at the first square, saw or triangle)', { timeout: 120000 }, () => {
+	// blep.js tabulates ∫h and ∫(∫h − step) O = 128 points a sample over ±K = 32 samples: 2KO + 1 doubles each
+	let tables = 2 * (2 * 32 * 128 + 1) * 8
+	for (let order of [['sine', 'square', 'sawtooth', 'triangle'], ['square', 'sine', 'triangle', 'sawtooth'], ['sawtooth', 'triangle', 'sine', 'square'], ['triangle', 'sawtooth', 'square', 'sine']]) {
+		let { built, calls } = oscStores(order)
+		ok(built >= tables, `${order.join(' → ')}: the factory made ${built} B, the ${tables} B of the tables among them`)
+		is(calls.filter(d => d !== 0).length, 0, `${order.join(' → ')}: bytes the calls made: ${calls.join(', ')}`)
+	}
+})
+
+// A host as contract 1.0 asks one to be (Parameters, `smoothing` and Time; What a host owes, 3), for the oscillator:
+// gain `from` until frame `at`, then `to`, reached by a linear ramp of the declared `smoothing` from the value in
+// force; the call split at `at`, none longer than 32 frames while gain moves (nor past the ramp's end), each handed
+// the values at its first frame as float32; otherwise calls of `cut()` frames. audio's toStream hands it the same
+function oscHosted (m, n, { type = 'sine', from, to = from, at = Infinity, cut, sampleRate = 44100 }) {
+	let live = { freq: Float32Array.of(440), detune: Float32Array.of(0), gain: Float32Array.of(from), type }
+	let proc = m({ sampleRate, maxBlockSize: 1024, maxChannels: 1, params: { ...live, gain: Float32Array.of(from) } }), y = new Float32Array(n)
+	let len = Math.max(1, Math.round(m.params.gain.smoothing * sampleRate))
+	for (let i = 0, k; i < n; i += k) {
+		k = Math.min(n - i, cut())
+		if (i < at && i + k > at) k = at - i
+		let d = i - at
+		if (d >= 0 && d < len) { live.gain[0] = to + (from - to) * (1 - d / len); k = Math.min(k, 32, at + len - i) }
+		else if (d >= len) live.gain[0] = to
+		proc([], [[y.subarray(i, i + k)]], live)
+	}
+	return y
+}
+test("osc atom: a moving gain is the host's ramp 32 frames late, however the host cuts its calls; held, it is the value itself from the first sample (was: a step at each call)", async () => {
+	let { osc: atom } = await import('@audio/synth-osc/audio'), { wave } = await import('@audio/synth-osc')
+	let sr = 44100, n = 4096, at = 1000, len = Math.round(atom.params.gain.smoothing * sr), f32 = Math.fround
+	let seed = 9, random = () => 1 + ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 8) % 1024
+	// the ramp a host plays, 0.25 to 0.75 over `len` frames from `at` (contract 1.0, Parameters: `smoothing`)
+	let r = f => f <= at ? 0.25 : f >= at + len ? 0.75 : 0.25 + 0.5 * (f - at) / len
+	for (let type of ['sine', 'square']) {
+		// the samples at gain 1: the phase advanced as process advances it, each sample the kernel's own wave()
+		let w = new Float64Array(n), dt = 440 * 2 ** (0 / 1200) / sr
+		for (let i = 0, t = 0; i < n; i++) { w[i] = wave(type, t, dt); t += dt; t -= Math.floor(t) }
+		let held = oscHosted(atom, n, { type, from: 0.3, cut: random })
+		ok(held.every((v, i) => Object.is(v, f32(f32(0.3) * w[i]))), `${type}: built at 0.3, 0.3 times the wave from the first sample, bit for bit`)
+		// Each value a host hands is r rounded to float32, within 2^-25 of it (half an ulp under 1), and the line between
+		// two as near; the output is rounded again, within 2^-25 (|y| < 1): |y − r(i − 32)·w| ≤ 2^-25·(1 + |w|)
+		for (let [how, cut] of [['calls of 128', () => 128], ['calls of 1', () => 1], ['calls of 33', () => 33], ['random calls of 1 to 1024', random]]) {
+			let y = oscHosted(atom, n, { type, from: 0.25, to: 0.75, at, cut }), worst = 0
+			for (let i = 0; i < n; i++) worst = Math.max(worst, Math.abs(y[i] - r(i - 32) * w[i]) / (2 ** -25 * (1 + Math.abs(w[i]))))
+			ok(worst <= 1, `${type}, ${how}: the ramp 32 frames late times the wave, to ${worst.toFixed(3)} of float32's rounding`)
+			let end = at + len + 32
+			ok(y.subarray(end).every((v, i) => Object.is(v, f32(0.75 * w[end + i]))), `${type}, ${how}: 0.75 itself from 32 frames after the ramp, bit for bit`)
+		}
+	}
+})
+
+// A stream held at sine for 2^15 calls, then for 2^12 calls of 32 frames the gain moving or another wave: the
+// deoptimizations V8 reports after the change (--trace-deopt-verbose) at a line of this package. Code V8 optimized
+// for the sine falls back to code that boxes numbers (10 MB in the 1024 calls after the first square, measured on
+// Node 25), when a path it never saw is taken: the factory has the oscillator's paths run before the first call
+function oscDeopts (change) {
+	let dir = dirname(fileURLToPath(import.meta.resolve('@audio/synth-osc/audio')))
+	let child = `
+		import { osc } from ${JSON.stringify(import.meta.resolve('@audio/synth-osc/audio'))}
+		let given = () => ({ freq: Float32Array.of(440), detune: Float32Array.of(0), gain: Float32Array.of(0.8), type: 'sine' })
+		let live = given(), proc = osc({ sampleRate: 48000, maxBlockSize: 128, maxChannels: 1, params: given() }), out = [[new Float32Array(128)]], short = [[new Float32Array(32)]]
+		for (let i = 0; i < 1 << 15; i++) { live.type = 'sine'; proc([], out, live) }
+		process.stdout.write('@@ change\\n')
+		for (let i = 0; i < 1 << 12; i++) { ${change}; proc([], short, live) }`
+	let trace = execFileSync(process.execPath, ['--trace-deopt-verbose', '--input-type=module', '-e', child], { encoding: 'utf8', maxBuffer: 1 << 28 })
+	return trace.slice(trace.indexOf('@@ change')).split('\n').filter(l => l.includes('deoptimize at') && l.includes(dir))
+}
+test('osc atom: a stream held at sine that turns square, saw or triangle, or moves its gain, deoptimizes none of the oscillator\'s code', { skip: +process.versions.node.split('.')[0] < 20 && 'measured on Node 20 and later', timeout: 120000 }, () => {
+	for (let [what, change] of [['gain moving', 'let k = i & 63; live.gain[0] = 0.25 + 0.5 * (k < 32 ? k : 64 - k) / 32'], ['square', "live.type = 'square'"], ['sawtooth', "live.type = 'sawtooth'"], ['triangle', "live.type = 'triangle'"]]) {
+		let at = oscDeopts(change)
+		is(at.length, 0, `${what}: ${at.length} deoptimizations${at.length ? `, at ${at.map(l => l.match(/([^/]+:\d+:\d+)>/)?.[1]).join(', ')}` : ''}`)
+	}
 })
 
 import { dtmf, pluck, risset, rhythm, adsr, lfo, wavetable, membrane, voice } from './index.js'
@@ -252,6 +374,16 @@ test('risset/membrane/rhythm — finite, decaying, grid-timed', () => {
 	ok(e(0.5) > e(0.25) * 20, 'beat at 0.5 s, silence at 0.25 s')
 })
 
+test('rhythm manifest: bpm declares its unit, bpm, and clicks that many times a minute', async () => {
+	let { rhythm: manifest } = await import('./packages/synth-rhythm/audio.js')
+	is(manifest.params.bpm.unit, 'bpm', 'unit bpm (contract 1.0 § Parameters)')
+	let out = [[new Float32Array(2 * 44100)]]
+	manifest({ sampleRate: 44100 })([], out, { bpm: [90], beats: [4], freq: [1000], accentFreq: [1500], amp: [0.7] })
+	let d = out[0][0], e = at => { let s = 0, i0 = Math.round(at * 44100); for (let i = i0; i < i0 + 600; i++) s += d[i] * d[i]; return s }
+	// 90 a minute: a click every 60 / 90 s
+	for (let k = 0; k < 3; k++) ok(e(k * 60 / 90) > e(k * 60 / 90 + 0.3) * 20, `click ${k} at ${(k * 60 / 90).toFixed(3)} s, silence 0.3 s after`)
+})
+
 test('adsr/lfo — shape points', () => {
 	let e = adsr({ attack: 0.1, decay: 0.1, sustain: 0.5, duration: 0.5, release: 0.2, fs: 1000 })
 	almost(e[50], 0.5, 0.02, 'mid attack')
@@ -272,6 +404,20 @@ test('wavetable — pos 0 plays table A, pos 1 plays table B', () => {
 	let a = wavetable(440, { tables: [sineT, sqT], position: 0, duration: 0.4 })
 	let b = wavetable(440, { tables: [sineT, sqT], position: 1, duration: 0.4 })
 	ok(g(b, 1320) > g(a, 1320) * 5, 'square table has 3rd harmonic, sine table does not')
+})
+
+test('wavetable: one table plays as is at any position; of two or three, position 0 plays the first, 1 the last, 0.5 the middle one or an even mix (was: one table threw)', () => {
+	let N = 512, fs = 44100, f = 441
+	let sine = new Float32Array(N), level = v => new Float32Array(N).fill(v)
+	for (let i = 0; i < N; i++) sine[i] = Math.sin(2 * Math.PI * i / N)
+	let play = (tables, position) => wavetable(f, { tables, position, duration: 0.05, fs, amp: 1 })
+	// linear interpolation errs at most h²/8 · max|y''| (Lagrange remainder, n = 1): (2π/512)²/8 = 1.9e-5 on a unit sine
+	for (let p of [0, 0.5, 1]) ok(play([sine], p).every((x, i) => Math.abs(x - Math.sin(2 * Math.PI * f * i / fs)) < 1e-4), `one table at ${p}: the sine at ${f} Hz`)
+	// constant tables read back their level: which tables sound, and how much of each
+	let sounds = (tables, p, v) => ok(play(tables, p).every(x => Math.abs(x - v) < 1e-6), `${tables.length} tables at ${p}: ${v}`)
+	let two = [level(1), level(3)], three = [level(1), level(3), level(9)]
+	for (let [p, v] of [[0, 1], [0.5, 2], [1, 3]]) sounds(two, p, v)
+	for (let [p, v] of [[0, 1], [0.5, 3], [1, 9]]) sounds(three, p, v)
 })
 
 test('voice — enveloped, filtered, pitched, finite', () => {
@@ -563,12 +709,25 @@ test('noise — duration in seconds (family convention)', () => {
 test('voice manifest — renders its note events (every name it uses is imported)', async () => {
 	// The audio.js manifest once called midiToHz without importing it: a ReferenceError on the first note.
 	let { voice: manifest } = await import('./packages/synth-voice/audio.js')
-	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, type: 'note', kind: 'on', pitch: 69, velocity: 1, id: 0 }, { time: 4410, type: 'note', kind: 'off', pitch: 69, id: 0 }] })
+	// slots as contract 1.0 gives them, { time, kind, midi, velocity, id }: the note number is `midi` (was `pitch`)
+	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, kind: 'on', midi: 69, velocity: 1, id: 0 }, { time: 4410, kind: 'off', midi: 69, velocity: 0, id: 0 }] })
 	let out = [[new Float32Array(8820)]]
 	proc([], out, { type: 'sawtooth', attack: [.01], decay: [.1], sustain: [.7], release: [.1], fc: [2000], envAmount: [.5], amp: [.5] })
 	let peak = 0
 	for (let v of out[0][0]) peak = Math.max(peak, Math.abs(v))
 	ok(peak > .1 && out[0][0].every(Number.isFinite), `A4 renders (peak ${peak.toFixed(3)})`)
+	almost(zcFreq(out[0][0], 441, 4410), 440, 6, 'midi 69 sounds A4, 440 Hz (MIDI tuning standard); one crossing in this window is 5.6 Hz')
+})
+
+test('poly manifest: plays each note event at its slot\'s midi', async () => {
+	let { poly: manifest } = await import('./packages/synth-poly/audio.js')
+	// slots as contract 1.0 gives them: A4 for 0.5 s, then A5 to the end with no off; midi 69 = A4 = 440 Hz (MIDI tuning standard)
+	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, kind: 'on', midi: 69, velocity: 1, id: 0 }, { time: 22050, kind: 'off', midi: 69, velocity: 0, id: 0 }, { time: 22050, kind: 'on', midi: 81, velocity: 1, id: 1 }] })
+	let out = [[new Float32Array(44100)]]
+	proc([], out, { voices: [16], type: 'sine', amp: [.7] })
+	ok(out[0][0].every(Number.isFinite), 'finite')
+	almost(zcFreq(out[0][0], 2205, 19845), 440, 3, 'midi 69: 440 Hz')
+	almost(zcFreq(out[0][0], 24255, 41895), 880, 3, 'midi 81: 880 Hz')
 })
 
 test('voice — former option name `cutoff` still works as `fc`', () => {
@@ -828,7 +987,7 @@ test('tonewheel: scanner V1/V2/V3 swing pitch ±0.5/0.75/1.5% at 412 rpm (Hammon
 
 test('tonewheel manifest: note events play the drawbar params', async () => {
 	let { tonewheel: manifest } = await import('./packages/synth-tonewheel/audio.js')
-	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, type: 'note', kind: 'on', pitch: 69, velocity: 1, id: 0 }, { time: 22050, type: 'note', kind: 'off', pitch: 69, id: 0 }] })
+	let proc = manifest({ sampleRate: 44100, events: [{ time: 0, kind: 'on', midi: 69, velocity: 1, id: 0 }, { time: 22050, kind: 'off', midi: 69, velocity: 0, id: 0 }] })
 	let out = [[new Float32Array(44100)]], params = Object.fromEntries(Object.entries(manifest.params).map(([k, p]) => [k, p.type === 'number' ? [p.default] : p.default]))
 	proc([], out, params)
 	let d = out[0][0]

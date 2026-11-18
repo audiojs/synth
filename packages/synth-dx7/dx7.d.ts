@@ -41,13 +41,20 @@ export function render(patch: ArrayLike<number>, options?: RenderOptions): Int32
 /** One note streamed in 64-sample blocks of raw int32 output. */
 export class Voice {
   constructor(patch: ArrayLike<number>, options?: VoiceOptions)
+  /** starts a note on this voice as a new Voice would, allocating nothing; `velocity` 0..127 */
+  init(patch: ArrayLike<number>, note: number, velocity: number): void
   /** adds one 64-sample block into `out` (Int32Array(64)) and returns it */
   block(out: Int32Array): Int32Array
   /** releases the key */
   keyup(): void
   /** key up and every carrier EG at its final level */
   readonly done: boolean
+  /** done, and every carrier below the gain the engine skips an operator at: every later block adds 0 */
+  readonly silent: boolean
 }
+
+/** Seconds a note of `patch` can sound after the block its key goes up before, at most (MIDI keys 0..127 through the voice's transpose, velocity 127); Infinity where a carrier's L4 holds it audible. */
+export function releaseTime(patch: ArrayLike<number>, options?: { fs?: number, msfa?: boolean }): number
 
 export interface Dx7Voice {
   /** voice name, trailing spaces removed */

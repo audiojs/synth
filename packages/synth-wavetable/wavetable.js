@@ -9,7 +9,7 @@ export default function wavetable (freq, { tables, position = 0, duration = 1, f
 	let t = 0, dt = freq / fs
 	for (let i = 0; i < n; i++) {
 		let p = Math.min(1, Math.max(0, posFn(i / n))) * (tables.length - 1)
-		let ti = Math.min(tables.length - 2, Math.floor(p))
+		let ti = Math.max(0, Math.min(tables.length - 2, Math.floor(p)))
 		let tf = tables.length > 1 ? p - ti : 0
 		let read = tbl => {
 			let x = t * tbl.length
