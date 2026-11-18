@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-wavetable",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Morphing wavetable oscillator — scan a bank of single-cycle tables (WaveEdit class)",
   "type": "module",
   "sideEffects": false,

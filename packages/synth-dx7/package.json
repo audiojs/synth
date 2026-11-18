@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-dx7",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Yamaha DX7 FM engine: a bit-exact JavaScript port of the Music Synthesizer for Android core (6 operators, 32 algorithms, DX7 envelopes, LFO, pitch EG), with DX7 sysex loading",
   "type": "module",
   "sideEffects": false,
