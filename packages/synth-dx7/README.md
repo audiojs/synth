@@ -42,7 +42,7 @@ Output keeps MSFA's scale, 1.0 = its int16 full scale: one carrier at output lev
 
 **Live instrument.** `import { dx7 } from '@audio/synth-dx7/audio'` is a processor of the audio.js contract 1.0: notes in, no input bus, the mono voice on every output channel, streaming. A 1.0 host gives it note events and it plays them as they arrive.
 
-- Sixteen voices, the DX7's polyphony (DX7 Operating Manual, specifications; MSFA wiki Dx7Hardware, "6 operators x 16 voice polyphony"; MSFA `synth_unit.h`, `max_active_notes = 16`), made once and reused: `process` allocates nothing.
+- Sixteen voices, the DX7's polyphony (DX7 Operating Manual, specifications; MSFA wiki Dx7Hardware, "6 operators x 16 voice polyphony"; MSFA `synth_unit.h`, `max_active_notes = 16`), made once and reused: `process` allocates nothing but one number (16 bytes) at a note-on whose `midi` is a fraction.
 - Each note runs the engine's 64-sample blocks from its own note-on frame, so it is `Voice`'s render of that note sample for sample, from the frame it starts at, whatever the call sizes. At 49096 Hz that is upstream MSFA's.
 - An off releases at its voice's next 64-sample step, at most 63 frames (1.4 ms at 44.1 kHz) after it: the engine's envelopes move once a step.
 - A new note takes the voice MSFA's `SynthUnit::AllocateNote` gives: counting from the voice after the last one taken, the first whose key is up, its release cut if it still rings. With all 16 keys held MSFA drops the new note; here the oldest held note gives way instead (our choice).
