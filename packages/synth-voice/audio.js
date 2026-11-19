@@ -33,7 +33,8 @@ export const voice = (ctx) => {
 		}
 		for (let i = 0; i < evs.length; i++) {
 			const e = evs[i]
-			if (e.kind === 'on') on.set(e.id, { time: e.time, midi: e.midi, velocity: e.velocity })
+			// a host older than contract 1.0 names the note number `pitch`
+			if (e.kind === 'on') on.set(e.id, { time: e.time, midi: e.midi ?? e.pitch, velocity: e.velocity })
 			else if (e.kind === 'off' && on.has(e.id)) { render(on.get(e.id), e.time); on.delete(e.id) }
 		}
 		for (const slot of on.values()) render(slot, n)  // unterminated notes ring to the end

@@ -1,4 +1,7 @@
 import test, { almost, ok, is } from 'tst'
+// tst starts a file's tests once their count has stood for 10 ms, which a top-level await below can outlast: the file
+// starts them itself, after the last is registered
+test.manual = true
 import { pinkNoise } from '@audio/synth-noise'
 const audio = { pinkNoise }
 import { dftMag, magDB, impulse, dc, EPSILON } from './test/util.js'
@@ -730,6 +733,50 @@ test('poly manifest: plays each note event at its slot\'s midi', async () => {
 	almost(zcFreq(out[0][0], 24255, 41895), 880, 3, 'midi 81: 880 Hz')
 })
 
+test('poly, voice and tonewheel manifests: a slot naming its note `pitch` plays as one naming it `midi`', async () => {
+	// a host older than contract 1.0 names the note number `pitch`: C4 for a quarter second, then G4 at half velocity
+	// to the end with no off
+	let slots = key => [
+		{ time: 0, kind: 'on', [key]: 60, velocity: 1, id: 0 },
+		{ time: 11025, kind: 'off', [key]: 60, velocity: 0, id: 0 },
+		{ time: 11025, kind: 'on', [key]: 67, velocity: .5, id: 1 },
+	]
+	for (let name of ['poly', 'voice', 'tonewheel']) {
+		let { [name]: manifest } = await import(`./packages/synth-${name}/audio.js`)
+		let params = Object.fromEntries(Object.entries(manifest.params).map(([k, p]) => [k, p.type === 'number' ? [p.default] : p.default]))
+		let render = events => { let out = [[new Float32Array(22050)]]; manifest({ sampleRate: 44100, events })([], out, params); return out[0][0] }
+		let midi = render(slots('midi')), pitch = render(slots('pitch')), both = render(slots('midi').map(e => ({ ...e, pitch: e.midi + 12 })))
+		ok(peakOf(midi) > .05, `${name}: sounds (peak ${peakOf(midi).toFixed(3)})`)
+		ok(pitch.every((v, i) => v === midi[i]), `${name}: \`pitch\` slots render what \`midi\` slots do, sample for sample`)
+		ok(both.every((v, i) => v === midi[i]), `${name}: \`midi\` is read where a slot has both`)
+	}
+})
+
+test('dx7 manifest: a slot naming its note `pitch` plays as one naming it `midi`; a host that hands no note events is an error', async () => {
+	let { dx7: manifest } = await import('./packages/synth-dx7/audio.js')
+	// C4 for 4096 frames, then G4 at half velocity to the end with no off, in calls of 128 frames, as a live host plays it
+	let slots = key => [
+		{ time: 0, kind: 'on', [key]: 60, velocity: 1, id: 0 },
+		{ time: 4096, kind: 'off', [key]: 60, velocity: 0, id: 0 },
+		{ time: 4096, kind: 'on', [key]: 67, velocity: .5, id: 1 },
+	]
+	let params = Object.fromEntries(Object.entries(manifest.params).map(([k, p]) => [k, p.type === 'number' ? [p.default] : p.default]))
+	let play = evs => {
+		let ctx = { sampleRate: 44100, maxBlockSize: 128, maxChannels: 1, params, events: [] }, proc = manifest(ctx), out = new Float32Array(16384)
+		for (let f = 0; f < out.length; f += 128) {
+			ctx.events = evs.filter(e => e.time >= f && e.time < f + 128).map(e => ({ ...e, time: e.time - f }))
+			proc([], [[out.subarray(f, f + 128)]], params)
+		}
+		return out
+	}
+	let midi = play(slots('midi')), pitch = play(slots('pitch')), both = play(slots('midi').map(e => ({ ...e, pitch: e.midi + 12 })))
+	ok(peakOf(midi) > .05, `sounds (peak ${peakOf(midi).toFixed(3)})`)
+	ok(pitch.every((v, i) => v === midi[i]), '`pitch` slots render what `midi` slots do, sample for sample')
+	ok(both.every((v, i) => v === midi[i]), '`midi` is read where a slot has both')
+	let proc = manifest({ sampleRate: 44100, maxBlockSize: 128, maxChannels: 1, params })
+	throws(() => proc([], [[new Float32Array(128)]], params), /no note events from the host/, 'no ctx.events: an error that says the host hands none')
+})
+
 test('voice — former option name `cutoff` still works as `fc`', () => {
 	let a = voice(220, { fc: 1500, duration: 0.1 }), b = voice(220, { cutoff: 1500, duration: 0.1 }), c = voice(220, { duration: 0.1 })
 	ok(a.every((v, i) => v === b[i]), '{ cutoff } ≡ { fc }')
@@ -1147,3 +1194,6 @@ test('modal-fit: onset after silence, channels, JSON, freq and nmodes options, s
 	is(fitModal(x, { nmodes: 2 }).modes.length, 2, 'nmodes keeps the strongest')
 	throws(() => fitModal(new Float32Array(4410)), /silent/)
 })
+
+const { failed } = await test.run()
+process.exit(failed.length ? 1 : 0)

@@ -14,7 +14,8 @@ export const tonewheel = (ctx) => (inputs, outputs, params) => {
 	const n = out[0].length, sr = ctx.sampleRate
 	const evs = ctx.events || [], on = new Map(), notes = []
 	for (const e of evs) {
-		if (e.kind === 'on') on.set(e.id, e)
+		// a host older than contract 1.0 names the note number `pitch`
+		if (e.kind === 'on') on.set(e.id, { time: e.time, midi: e.midi ?? e.pitch })
 		else if (e.kind === 'off' && on.has(e.id)) {
 			const s = on.get(e.id)
 			notes.push({ time: s.time / sr, midi: s.midi, duration: (e.time - s.time) / sr })

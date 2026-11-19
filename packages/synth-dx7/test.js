@@ -1,6 +1,9 @@
 // The live instrument (audio.js) against the kernel (dx7.js) that the family's test.js proves bit-exact with upstream
 // MSFA: a note through the manifest is the kernel's own render of it, sample for sample, at any frame and call size.
 import test, { ok, is } from 'tst'
+// tst starts a file's tests once their count has stood for 10 ms, and gives up on a file that has registered none
+// within 200 ms, which the top-level await below can outlast: the file starts them itself, after the last is registered
+test.manual = true
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -276,3 +279,6 @@ test('manifest: a value changed while a note sounds applies from the next note o
 	// break point's other side
 	ok(heard >= 120, `${heard} of the 145 changes alter the first note when it starts with them, so the check sees them`)
 })
+
+const { failed } = await test.run()
+process.exit(failed.length ? 1 : 0)

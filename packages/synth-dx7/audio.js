@@ -53,6 +53,9 @@ export const dx7 = (ctx) => {
 
 	return (inputs, outputs, params) => {
 		const out = outputs[0], n = out[0].length, evs = ctx.events
+		// a host of contract 1.0 hands each block its note events, [] where it has none; a host that hands none passes
+		// no note on, and silence would hide that
+		if (!evs) throw new Error('dx7: no note events from the host (ctx.events is undefined): notes need a host of contract 1.0, as audio 2.16 and later')
 		fill(patch, params)
 		mix.fill(0, 0, n)
 		let f = 0
@@ -61,7 +64,8 @@ export const dx7 = (ctx) => {
 			if (ev.time > f) { run(f, ev.time); f = ev.time }
 			if (ev.kind === 'on') {
 				const s = take(), vel = ev.velocity < 0 ? 0 : ev.velocity > 1 ? 1 : ev.velocity
-				s.voice.init(patch, ev.midi + patch[144] - 24, Math.round(vel * 127))
+				// a host older than contract 1.0 names the note number `pitch`
+				s.voice.init(patch, (ev.midi ?? ev.pitch) + patch[144] - 24, Math.round(vel * 127))
 				s.id = ev.id; s.down = true; s.up = false; s.live = true; s.at = N; s.age = ++ons
 			}
 			else for (let k = 0; k < VOICES; k++) if (voices[k].down && voices[k].id === ev.id) { voices[k].down = false; voices[k].up = true; break }

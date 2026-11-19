@@ -16,7 +16,8 @@ export const poly = (ctx) => {
 		const on = new Map(), notes = []
 		for (let i = 0; i < evs.length; i++) {
 			const e = evs[i]
-			if (e.kind === 'on') on.set(e.id, e)
+			// a host older than contract 1.0 names the note number `pitch`
+			if (e.kind === 'on') on.set(e.id, { time: e.time, midi: e.midi ?? e.pitch, velocity: e.velocity })
 			else if (e.kind === 'off' && on.has(e.id)) {
 				const s = on.get(e.id)
 				notes.push({ time: s.time / sr, midi: s.midi, duration: (e.time - s.time) / sr, velocity: s.velocity ?? 1 })
