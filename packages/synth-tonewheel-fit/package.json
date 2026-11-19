@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-tonewheel-fit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tonewheel registration from audio: sustained organ note or chord → nine drawbars 0..8, percussion guess, score (NNLS against the tonewheel model)",
   "type": "module",
   "sideEffects": false,
@@ -21,7 +21,7 @@
   ],
   "types": "fit.d.ts",
   "dependencies": {
-    "@audio/synth-tonewheel": "^0.1.0",
+    "@audio/synth-tonewheel": "^0.2.0",
     "fourier-transform": "^2.4.0"
   },
   "keywords": [

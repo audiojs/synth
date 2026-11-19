@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-tonewheel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tonewheel organ (Hammond B-3 upper manual): 91 geared tonewheels, nine drawbars, foldback, single-trigger percussion, key click, vibrato/chorus scanner",
   "type": "module",
   "sideEffects": false,
