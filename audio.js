@@ -1,0 +1,17 @@
+// @audio/synth/audio: the family's manifests for the audio host, each member's own /audio entry under its names.
+// A member is a package of packages/ the umbrella depends on that has an audio.js (test.js holds this list to them).
+export * from '@audio/synth-chirp/audio'
+export * from '@audio/synth-drum/audio'
+export * from '@audio/synth-dx7/audio'
+export * from '@audio/synth-envelope/audio'
+export * from '@audio/synth-fm/audio'
+export * from '@audio/synth-modal/audio'
+export * from '@audio/synth-noise/audio'
+export * from '@audio/synth-osc/audio'
+export * from '@audio/synth-pluck/audio'
+export * from '@audio/synth-poly/audio'
+export * from '@audio/synth-rhythm/audio'
+export * from '@audio/synth-risset/audio'
+export * from '@audio/synth-sfx/audio'
+export * from '@audio/synth-tonewheel/audio'
+export * from '@audio/synth-voice/audio'
