@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-risset",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Risset drum — inharmonic partial set with exponential decay",
   "type": "module",
   "sideEffects": false,

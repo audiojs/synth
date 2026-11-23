@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-osc",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Oscillator — band-limited sine/square/sawtooth/triangle with detune",
   "type": "module",
   "sideEffects": false,

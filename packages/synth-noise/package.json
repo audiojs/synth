@@ -1,6 +1,6 @@
 {
   "name": "@audio/synth-noise",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Colors of noise — white, pink (Kellet), brown, blue, violet; seeded, slope-verified",
   "type": "module",
   "sideEffects": false,
