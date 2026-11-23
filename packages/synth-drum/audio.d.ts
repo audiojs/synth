@@ -1,11 +1,13 @@
 // Generated from the audio.js manifest (params metadata is the source of truth).
-// Regenerate: node tools/dts.js in @audio/compile. Do not edit by hand.
+// Regenerate: node tools/dts.js in @audio/plugin. Do not edit by hand.
 
 /** Automatable number — scalar, `t => value` fn, or breakpoint curve {t, v} */
 type Auto = number | ((t: number) => number) | { t: number[], v: number[] }
 /** Per-block param values as delivered by hosts (numbers arrive as 1-length Float32Array) */
 type Live = Record<string, Float32Array | string | boolean>
-type Ctx = { sampleRate: number, maxBlockSize: number, maxChannels: number, currentTime: number, duration?: number, events?: readonly any[], emit?: (name: string, ...args: any[]) => void, [k: string]: unknown }
+type Transport = Readonly<{ playing: boolean, bpm: number, beat: number, barStart: number, timeSig: [number, number] }>
+/** What a host hands a processor it builds: the contract's Context (CONTRACT.d.ts, 1.0) */
+type Ctx = { readonly sampleRate: number, readonly maxBlockSize: number, readonly maxChannels: number, readonly layouts?: { readonly inputs: readonly (string | undefined)[], readonly outputs: readonly (string | undefined)[] }, readonly params: Live, readonly buffers: Readonly<Record<string, Float32Array[] | undefined>>, readonly events?: readonly { time: number, kind: 'on' | 'off', midi: number, velocity: number, id: number }[], emit(name: string, value: number): void, readonly transport: Transport }
 type Process = (inputs: Float32Array[][], outputs: Float32Array[][], params: Live) => void
 
 /** Chainable-host options for 'cymbal' */
@@ -24,9 +26,9 @@ export declare const cymbal: {
   streaming: false
   params: {
     /** 100..800 Hz (default 200) */
-    "freq": { type: "number", default: 200 }
+    "freq": { type: "number", min: 100, max: 800, default: 200, unit: "Hz" }
     /** 0..1 (default 0.5) */
-    "amp": { type: "number", default: 0.5 }
+    "amp": { type: "number", min: 0, max: 1, default: 0.5 }
   }
 }
 
@@ -48,11 +50,11 @@ export declare const kick: {
   streaming: false
   params: {
     /** 30..120 Hz (default 55) */
-    "freq": { type: "number", default: 55 }
+    "freq": { type: "number", min: 30, max: 120, default: 55, unit: "Hz" }
     /** 1..8 (default 3) */
-    "drop": { type: "number", default: 3 }
+    "drop": { type: "number", min: 1, max: 8, default: 3 }
     /** 0..1 (default 0.9) */
-    "amp": { type: "number", default: 0.9 }
+    "amp": { type: "number", min: 0, max: 1, default: 0.9 }
   }
 }
 
@@ -72,8 +74,8 @@ export declare const snare: {
   streaming: false
   params: {
     /** 0..1 (default 0.7) */
-    "amp": { type: "number", default: 0.7 }
+    "amp": { type: "number", min: 0, max: 1, default: 0.7 }
     /** 1..65536 (default 9) */
-    "seed": { type: "number", default: 9 }
+    "seed": { type: "number", min: 1, max: 65536, default: 9, step: 1 }
   }
 }
